@@ -84,11 +84,11 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
       const initialCenter = userLocation || { lat: 35.6594945, lng: 139.6999859 };
       const initialZoom = userLocation ? 16 : 18;
 
-      // Map configuration
+      // Map configuration with 3D view
       const mapOptions: google.maps.MapOptions = {
         center: initialCenter,
         zoom: initialZoom,
-        tilt: 0,
+        tilt: 67.5, // Enable 3D view with tilt
         heading: 0,
         mapId: "15431d2b469f209e", // Required for WebGL overlays
         disableDefaultUI: true,
@@ -135,6 +135,7 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
         // Import Three.js and related libraries dynamically
         const threeModule = await import('three');
         const googleMapsModule = await import('@googlemaps/three');
+        const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
 
         const THREE = threeModule;
         const { ThreeJSOverlayView } = googleMapsModule;
@@ -146,25 +147,64 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
         const scene = new THREE.Scene();
 
         // Add ambient light (reduced intensity on mobile)
-        const ambientLight = new THREE.AmbientLight(0xffffff, isMobile ? 0.6 : 0.75);
+        const ambientLight = new THREE.AmbientLight(0xffffff, isMobile ? 0.8 : 1.0);
         scene.add(ambientLight);
 
         // Add directional light (reduced intensity on mobile)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, isMobile ? 0.2 : 0.25);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, isMobile ? 0.3 : 0.5);
         directionalLight.position.set(0.5, -1, 0.5);
         scene.add(directionalLight);
 
-        // Create geometry with reduced complexity on mobile
-        const boxSize = isMobile ? 30 : 50;
-        const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
-        const material = new THREE.MeshLambertMaterial({
-          color: userLocation ? 0x4285F4 : 0x00ff00,
-          transparent: true,
-          opacity: 0.8
-        });
-        const cube = new THREE.Mesh(geometry, material);
-        cube.position.set(0, boxSize / 2, 0); // Raise it above ground
-        scene.add(cube);
+        // Load and add GLTF pin model
+        let pinModel: THREE.Object3D | null = null;
+        const loader = new GLTFLoader();
+
+        try {
+          const gltf = await new Promise<any>((resolve, reject) => {
+            loader.load('/pin.gltf', resolve, undefined, reject);
+          });
+
+          pinModel = gltf.scene;
+
+          // Scale the model appropriately (adjust as needed)
+          const modelScale = isMobile ? 5 : 8;
+          pinModel.scale.set(modelScale, modelScale, modelScale);
+
+          // Position the pin at ground level
+          pinModel.position.set(0, 0, 0);
+
+          // Ensure proper materials for lighting
+          pinModel.traverse((child: any) => {
+            if (child.isMesh) {
+              child.material.needsUpdate = true;
+              // Make materials respond to lighting
+              if (child.material.isMeshBasicMaterial) {
+                const newMaterial = new THREE.MeshLambertMaterial({
+                  color: child.material.color,
+                  map: child.material.map
+                });
+                child.material = newMaterial;
+              }
+            }
+          });
+
+          scene.add(pinModel);
+        } catch (gltfError) {
+          console.warn('Could not load pin.gltf, using fallback cube:', gltfError);
+
+          // Fallback: Create a simple cube if GLTF loading fails
+          const boxSize = isMobile ? 30 : 50;
+          const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
+          const material = new THREE.MeshLambertMaterial({
+            color: userLocation ? 0x4285F4 : 0x00ff00,
+            transparent: true,
+            opacity: 0.8
+          });
+          const cube = new THREE.Mesh(geometry, material);
+          cube.position.set(0, boxSize / 2, 0);
+          scene.add(cube);
+          pinModel = cube;
+        }
 
         // Add location-based markers if user location is available
         if (userLocation) {
@@ -196,10 +236,10 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
 
         const animate = (currentTime: number) => {
           if (currentTime - lastTime >= frameInterval) {
-            if (cube) {
+            if (pinModel) {
+              // Gentle rotation for the pin model (rotate around Y axis only)
               const rotationSpeed = isMobile ? 0.005 : 0.01;
-              cube.rotation.x += rotationSpeed;
-              cube.rotation.y += rotationSpeed;
+              pinModel.rotation.y += rotationSpeed;
             }
             overlay.requestRedraw();
             lastTime = currentTime;

@@ -12,14 +12,14 @@ export default function MapPage() {
             Suimming WebGL Map
           </h1>
           <p className="text-sm md:text-lg text-gray-600">
-            Interactive maps with Three.js WebGL overlay
+            Interactive 3D maps with user-centered location tracking
           </p>
         </div>
       </header>
 
-      {/* Full-height map container for mobile */}
+      {/* Extended height map container */}
       <div className="relative">
-        <div className="h-[60vh] md:h-96 mx-4 md:mx-8 mb-4 md:mb-8 border border-gray-300 rounded-lg overflow-hidden shadow-lg bg-white">
+        <div className="h-[80vh] md:h-[600px] mx-4 md:mx-8 mb-4 md:mb-8 border border-gray-300 rounded-lg overflow-hidden shadow-lg bg-white">
           <WebGLMapOverlay />
         </div>
 
