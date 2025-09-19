@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PWA Icon Generator</title>
+</head>
+<body>
+    <h2>PWA Icon Generator</h2>
+    <p>Generated icons will be downloaded automatically.</p>
+
+    <script>
+        function generateIcon(size) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Background gradient
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#3b82f6');
+            gradient.addColorStop(1, '#1d4ed8');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+
+            // Add rounded corners
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.beginPath();
+            const radius = size * 0.125; // 12.5% radius for modern iOS style
+            ctx.roundRect(0, 0, size, size, radius);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+
+            // Draw map pin icon
+            ctx.fillStyle = 'white';
+            const pinSize = size * 0.4;
+            const centerX = size / 2;
+            const centerY = size / 2 - pinSize * 0.1;
+
+            // Pin shape
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, pinSize / 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Pin point
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY + pinSize / 3);
+            ctx.lineTo(centerX - pinSize / 6, centerY + pinSize * 0.6);
+            ctx.lineTo(centerX + pinSize / 6, centerY + pinSize * 0.6);
+            ctx.closePath();
+            ctx.fill();
+
+            // Add small location dot
+            ctx.fillStyle = '#1d4ed8';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, pinSize / 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Convert to blob and download
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `icon-${size}x${size}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        }
+
+        // Generate all required icon sizes
+        const sizes = [192, 256, 384, 512];
+        sizes.forEach(size => {
+            setTimeout(() => generateIcon(size), size); // Stagger downloads
+        });
+
+        document.body.innerHTML += '<p>Icons generated! Check your downloads folder.</p>';
+    </script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "WebFetch(domain:developers.google.com)",
+      "Bash(pnpm add:*)",
+      "Bash(sudo pnpm add:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(pnpm build:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
