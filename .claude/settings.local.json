@@ -7,7 +7,9 @@
       "Bash(sudo pnpm add:*)",
       "Bash(npm install:*)",
       "Bash(pnpm dev:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(mkdir:*)",
+      "Bash(pnpm install:*)"
     ],
     "deny": [],
     "ask": []
