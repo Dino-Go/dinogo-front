@@ -12,13 +12,51 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationPermission, setLocationPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   const [mounted, setMounted] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // Effect to get user location first
   useEffect(() => {
     if (!mounted) return;
+
+    const getUserLocation = async () => {
+      try {
+        if (navigator.geolocation && locationPermission === 'prompt') {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 60000, // 1 minute
+            });
+          });
+
+          const location = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+
+          setUserLocation(location);
+          setLocationPermission('granted');
+        }
+      } catch (error) {
+        console.log('Geolocation error:', error);
+        setLocationPermission('denied');
+        // Still initialize map with default location
+        setMapReady(true);
+      }
+    };
+
+    getUserLocation();
+  }, [mounted, locationPermission]);
+
+  // Effect to initialize map after location is detected or denied
+  useEffect(() => {
+    if (!mounted) return;
+    if (locationPermission === 'prompt') return; // Wait for location detection
+    if (mapReady) return; // Map already initialized
 
     const initMap = async () => {
       if (!mapRef.current) return;
@@ -42,32 +80,9 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
     const createMap = async () => {
       if (!mapRef.current) return;
 
-      // Get user location if available
-      let initialCenter = { lat: 35.6594945, lng: 139.6999859 }; // Default to Tokyo
-      let initialZoom = 18;
-
-      try {
-        if (navigator.geolocation && locationPermission !== 'denied') {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: 5000,
-              maximumAge: 300000, // 5 minutes
-            });
-          });
-
-          initialCenter = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          setUserLocation(initialCenter);
-          setLocationPermission('granted');
-          initialZoom = 16; // Zoom in more when we have user location
-        }
-      } catch (error) {
-        console.log('Geolocation error:', error);
-        setLocationPermission('denied');
-      }
+      // Use user location if available, otherwise default to Tokyo
+      const initialCenter = userLocation || { lat: 35.6594945, lng: 139.6999859 };
+      const initialZoom = userLocation ? 16 : 18;
 
       // Map configuration
       const mapOptions: google.maps.MapOptions = {
@@ -104,6 +119,8 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
           },
         });
       }
+
+      setMapReady(true);
 
       // Initialize WebGL overlay after map loads
       mapInstance.current.addListener('idle', () => {
@@ -158,13 +175,15 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
           scene.add(locationMarker);
         }
 
+        // Use user location for WebGL overlay anchor if available
+        const overlayAnchor = userLocation || { lat: 35.6594945, lng: 139.6999859 };
+
         // Create WebGL overlay
         const overlay = new ThreeJSOverlayView({
           map: mapInstance.current,
           scene,
           anchor: {
-            lat: 35.6594945,
-            lng: 139.6999859,
+            ...overlayAnchor,
             altitude: 100
           },
           THREE
@@ -227,7 +246,7 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
         mapInstance.current = null;
       }
     };
-  }, [mounted, locationPermission, userLocation]);
+  }, [mounted, locationPermission, userLocation, mapReady]);
 
   const requestLocation = async () => {
     try {
@@ -258,12 +277,14 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
     }
   };
 
-  if (!mounted) {
+  if (!mounted || locationPermission === 'prompt') {
     return (
       <div className="w-full h-full flex items-center justify-center bg-gray-100">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading map...</p>
+          <p className="mt-2 text-gray-600">
+            {locationPermission === 'prompt' ? 'Detecting your location...' : 'Loading map...'}
+          </p>
         </div>
       </div>
     );
@@ -278,7 +299,7 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
       />
 
       {/* Location request button for mobile */}
-      {locationPermission === 'prompt' && (
+      {locationPermission === 'denied' && (
         <button
           onClick={requestLocation}
           className="absolute bottom-4 left-4 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg transition-colors z-10 md:hidden"
