@@ -11,7 +11,7 @@ const { networkConfig } = createNetworkConfig({
 	mainnet: { url: getFullnodeUrl('mainnet') },
 });
 
-export default function Providers({ children }: PropsWithChildren) {
+export function Providers({ children }: PropsWithChildren) {
     const [queryClient] = useState(() => new QueryClient());
     const networks = useMemo(() => networkConfig, []);
 
