@@ -4,18 +4,23 @@ import { useEffect, useRef, useState } from 'react';
 import { useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
 import { useRouter } from 'next/navigation';
 import * as THREE from 'three';
+import { ThreeJSOverlayView } from "@googlemaps/three";
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 interface WebGLMapOverlayProps {
 	className?: string;
 }
 
+// Global variables similar to trimet.js
+let loader: GLTFLoader;
+let map: google.maps.Map;
+let overlay: ThreeJSOverlayView;
+
 export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const mapRef = useRef<HTMLDivElement>(null);
-	const mapInstance = useRef<google.maps.Map | null>(null);
 	const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 	const [locationPermission, setLocationPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
 	const [mounted, setMounted] = useState(false);
-	const [mapReady, setMapReady] = useState(false);
 
 	// Wallet functionality
 	const currentAccount = useCurrentAccount();
@@ -35,7 +40,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		setMounted(true);
 	}, []);
 
-	// Effect to get user location first
+	// Get user location first
 	useEffect(() => {
 		if (!mounted) return;
 
@@ -46,49 +51,40 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 						navigator.geolocation.getCurrentPosition(resolve, reject, {
 							enableHighAccuracy: true,
 							timeout: 10000,
-							maximumAge: 60000, // 1 minute
+							maximumAge: 60000,
 						});
 					});
 
-					const location = {
+					setUserLocation({
 						lat: position.coords.latitude,
 						lng: position.coords.longitude,
-					};
-
-					setUserLocation(location);
+					});
 					setLocationPermission('granted');
 				}
 			} catch (error) {
 				console.log('Geolocation error:', error);
 				setLocationPermission('denied');
-				// Still initialize map with default location
-				setMapReady(true);
 			}
 		};
 
 		getUserLocation();
 	}, [mounted, locationPermission]);
 
-	// Effect to initialize map after location is detected or denied
+	// Initialize map when location is ready
 	useEffect(() => {
-		if (!mounted) return;
-		if (locationPermission === 'prompt') return; // Wait for location detection
-		if (mapReady) return; // Map already initialized
+		if (!mounted || locationPermission === 'prompt') return;
 
 		const initMap = async () => {
 			if (!mapRef.current) return;
 
-			// Load Google Maps JavaScript API
+			// Load Google Maps API if not loaded
 			if (!window.google) {
 				const script = document.createElement('script');
-				script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=geometry&v=beta`;
+				script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=geometry&v=beta&loading=async`;
 				script.async = true;
 				script.defer = true;
+				script.onload = () => setTimeout(createMap, 100);
 				document.head.appendChild(script);
-
-				script.onload = () => {
-					createMap();
-				};
 			} else {
 				createMap();
 			}
@@ -97,213 +93,75 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		const createMap = async () => {
 			if (!mapRef.current) return;
 
-			// Use user location if available, otherwise default to Tokyo
-			const initialCenter = userLocation || { lat: 35.6594945, lng: 139.6999859 };
-			const initialZoom = userLocation ? 16 : 18;
+			// Use user location or default center
+			const center = userLocation || { lat: 35.6594945, lng: 139.6999859 };
+			const centerWithAltitude = { ...center, altitude: 0 };
 
-			// Map configuration with 3D view
-			const mapOptions: google.maps.MapOptions = {
-				center: initialCenter,
-				zoom: initialZoom,
-				tilt: 67.5, // Enable 3D view with tilt
+			// Map options similar to trimet.js
+			const mapOptions = {
+				tilt: 30,
+				zoom: userLocation ? 16 : 18,
 				heading: 0,
-				mapId: "15431d2b469f209e", // Required for WebGL overlays
+				center,
+				mapId: "15431d2b469f209e",
 				disableDefaultUI: true,
-				gestureHandling: 'cooperative',
-				// Mobile-specific options
-				zoomControl: false,
-				mapTypeControl: false,
-				streetViewControl: false,
-				fullscreenControl: false,
+				gestureHandling: "greedy",
 			};
 
-			// Create the map
-			mapInstance.current = new google.maps.Map(mapRef.current, mapOptions);
+			// Create map
+			map = new google.maps.Map(mapRef.current, mapOptions);
 
-			// Add user location marker if available
-			if (userLocation && window.google) {
-				new google.maps.Marker({
-					position: userLocation,
-					map: mapInstance.current,
-					title: 'Your Location',
-					icon: {
-						path: google.maps.SymbolPath.CIRCLE,
-						scale: 8,
-						fillColor: '#4285F4',
-						fillOpacity: 1,
-						strokeColor: '#ffffff',
-						strokeWeight: 2,
-					},
-				});
-			}
-
-			setMapReady(true);
-
-			// Initialize WebGL overlay after map loads
-			mapInstance.current.addListener('idle', () => {
-				initWebGLOverlay();
+			// Create overlay similar to trimet.js
+			overlay = new ThreeJSOverlayView({
+				map,
+				anchor: centerWithAltitude,
+				scene: new THREE.Scene(),
+				THREE,
 			});
-		};
 
-		const initWebGLOverlay = async () => {
-			if (!mapInstance.current) return;
+			// Add ambient light like trimet.js
+			const ambientLight = new THREE.AmbientLight(0xFFFFFF);
+			ambientLight.intensity = 0.5;
+			(overlay as any).scene.add(ambientLight);
 
-			try {
-				// Import Google Maps Three.js integration and GLTF loader dynamically
-				const googleMapsModule = await import('@googlemaps/three');
-				const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+			// Initialize GLTF loader
+			loader = new GLTFLoader();
 
-				const { ThreeJSOverlayView } = googleMapsModule;
+			// Load pin.gltf similar to trimet.js bus loading
+			loader.load(
+				'/pin.gltf',
+				gltf => {
+					// Apply transformations similar to trimet.js
+					gltf.scene.scale.set(30, 30, 30);
+					gltf.scene.up = new THREE.Vector3(0, 0, 1); // Important from trimet.js
 
-				// Detect mobile device for performance optimization
-				const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-				// Create Three.js scene
-				const scene = new THREE.Scene();
-
-				// Add ambient light (reduced intensity on mobile)
-				const ambientLight = new THREE.AmbientLight(0xffffff, isMobile ? 0.8 : 1.0);
-				scene.add(ambientLight);
-
-				// Add directional light (reduced intensity on mobile)
-				const directionalLight = new THREE.DirectionalLight(0xffffff, isMobile ? 0.3 : 0.5);
-				directionalLight.position.set(0.5, -1, 0.5);
-				scene.add(directionalLight);
-
-				// Load and add GLTF pin model
-				let pinModel: THREE.Object3D | null = null;
-				const loader = new GLTFLoader();
-
-				try {
-					const gltf = await new Promise<any>((resolve, reject) => {
-						loader.load('/pin.gltf', resolve, undefined, reject);
-					});
-
-					pinModel = gltf.scene;
-
-					if (pinModel) {
-						// Scale the model appropriately (adjust as needed)
-						const modelScale = isMobile ? 5 : 8;
-						pinModel.scale.set(modelScale, modelScale, modelScale);
-
-						// Position the pin at ground level
-						pinModel.position.set(0, 0, 0);
-
-						// Ensure proper materials for lighting
-						pinModel.traverse((child: any) => {
-							if (child.isMesh) {
-								child.material.needsUpdate = true;
-								// Make materials respond to lighting
-								if (child.material.isMeshBasicMaterial) {
-									const newMaterial = new THREE.MeshLambertMaterial({
-										color: child.material.color,
-										map: child.material.map
-									});
-									child.material = newMaterial;
-								}
-							}
+					// Apply rotations to all children like trimet.js does
+					if (gltf.scene.children.length > 0) {
+						gltf.scene.children.forEach(child => {
+							child.rotation.x = Math.PI;
+							child.position.z = 5;
 						});
-
-						scene.add(pinModel);
 					}
-				} catch (gltfError) {
-					console.warn('Could not load pin.gltf, using fallback cube:', gltfError);
 
-					// Fallback: Create a simple cube if GLTF loading fails
-					const boxSize = isMobile ? 30 : 50;
-					const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
-					const material = new THREE.MeshLambertMaterial({
-						color: userLocation ? 0x4285F4 : 0x00ff00,
-						transparent: true,
-						opacity: 0.8
-					});
+					// Add to overlay scene
+					(overlay as any).scene.add(gltf.scene);
+				},
+				() => {
+					// Loading progress
+				},
+				() => {
+					// Fallback: Create a simple red object like Google's example
+					const geometry = new THREE.BoxGeometry(50, 50, 50);
+					const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 					const cube = new THREE.Mesh(geometry, material);
-					cube.position.set(0, boxSize / 2, 0);
-					scene.add(cube);
-					pinModel = cube;
+					cube.position.set(0, 25, 0);
+					(overlay as any).scene.add(cube);
 				}
-
-				// Add location-based markers if user location is available
-				if (userLocation) {
-					const markerGeometry = new THREE.SphereGeometry(10, isMobile ? 8 : 16, isMobile ? 8 : 16);
-					const markerMaterial = new THREE.MeshLambertMaterial({ color: 0xff4444 });
-					const locationMarker = new THREE.Mesh(markerGeometry, markerMaterial);
-					locationMarker.position.set(20, 10, 20);
-					scene.add(locationMarker);
-				}
-
-				// Use user location for WebGL overlay anchor if available
-				const overlayAnchor = userLocation || { lat: 35.6594945, lng: 139.6999859 };
-
-				// Create WebGL overlay
-				const overlay = new ThreeJSOverlayView({
-					map: mapInstance.current,
-					scene,
-					anchor: {
-						...overlayAnchor,
-						altitude: 100
-					},
-					THREE
-				});
-
-				// Mobile-optimized animation with frame rate limiting
-				let lastTime = 0;
-				const targetFPS = isMobile ? 30 : 60;
-				const frameInterval = 1000 / targetFPS;
-
-				const animate = (currentTime: number) => {
-					if (currentTime - lastTime >= frameInterval) {
-						if (pinModel) {
-							// Gentle rotation for the pin model (rotate around Y axis only)
-							const rotationSpeed = isMobile ? 0.005 : 0.01;
-							pinModel.rotation.y += rotationSpeed;
-						}
-						overlay.requestRedraw();
-						lastTime = currentTime;
-					}
-					requestAnimationFrame(animate);
-				};
-				animate(0);
-
-			} catch (error) {
-				console.error('Error initializing WebGL overlay:', error);
-
-				// Fallback: Show message that dependencies need to be installed
-				const fallbackDiv = document.createElement('div');
-				fallbackDiv.style.cssText = `
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          background: white;
-          padding: 20px;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-          z-index: 1000;
-          max-width: 400px;
-          text-align: center;
-        `;
-				fallbackDiv.innerHTML = `
-          <h3 style="margin: 0 0 16px 0; color: #333;">WebGL Overlay Setup Required</h3>
-          <p style="margin: 0 0 16px 0; color: #666;">Please install required dependencies:</p>
-          <div style="background: #f5f5f5; padding: 12px; border-radius: 4px; margin: 16px 0; font-family: monospace; font-size: 14px;">
-            npm install three @googlemaps/three @types/three
-          </div>
-          <p style="margin: 0; color: #666; font-size: 14px;">Then restart the development server.</p>
-        `;
-				mapRef.current?.appendChild(fallbackDiv);
-			}
+			);
 		};
 
 		initMap();
-
-		// Cleanup
-		return () => {
-			if (mapInstance.current) {
-				mapInstance.current = null;
-			}
-		};
-	}, [mounted, locationPermission, userLocation, mapReady]);
+	}, [mounted, locationPermission, userLocation]);
 
 	const requestLocation = async () => {
 		try {
@@ -324,9 +182,9 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 			setLocationPermission('granted');
 
 			// Center map on user location
-			if (mapInstance.current) {
-				mapInstance.current.setCenter(location);
-				mapInstance.current.setZoom(16);
+			if (map) {
+				map.setCenter(location);
+				map.setZoom(16);
 			}
 		} catch (error) {
 			console.error('Geolocation error:', error);
