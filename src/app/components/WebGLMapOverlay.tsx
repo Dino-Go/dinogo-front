@@ -1,19 +1,35 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
+import { useRouter } from 'next/navigation';
 import * as THREE from 'three';
 
 interface WebGLMapOverlayProps {
 	className?: string;
 }
 
-export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProps) {
+export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const mapRef = useRef<HTMLDivElement>(null);
 	const mapInstance = useRef<google.maps.Map | null>(null);
 	const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 	const [locationPermission, setLocationPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
 	const [mounted, setMounted] = useState(false);
 	const [mapReady, setMapReady] = useState(false);
+
+	// Wallet functionality
+	const currentAccount = useCurrentAccount();
+	const { mutate: disconnect } = useDisconnectWallet();
+	const router = useRouter();
+
+	const handleDisconnect = () => {
+		disconnect();
+		router.push('/');
+	};
+
+	const formatAddress = (address: string) => {
+		return `${address.slice(0, 6)}...${address.slice(-4)}`;
+	};
 
 	useEffect(() => {
 		setMounted(true);
@@ -353,7 +369,30 @@ export default function WebGLMapOverlaySimple({ className }: WebGLMapOverlayProp
 				</button>
 			)}
 
-			{/* Location status indicator */}
+			{/* Wallet status and disconnect button - Top Right */}
+			{currentAccount && (
+				<div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
+					{/* Wallet status */}
+					<div className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg flex items-center gap-2">
+						<span className="w-2 h-2 bg-emerald-300 rounded-full animate-pulse"></span>
+						<span className="font-mono">{formatAddress(currentAccount.address)}</span>
+					</div>
+
+					{/* Disconnect button */}
+					<button
+						onClick={handleDisconnect}
+						className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg transition-colors duration-200 flex items-center gap-1"
+						title="Disconnect wallet and return to home"
+					>
+						<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+						</svg>
+						Disconnect
+					</button>
+				</div>
+			)}
+
+			{/* Location status indicator - Top Left */}
 			{userLocation && (
 				<div className="absolute top-4 left-4 bg-green-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg z-10">
 					📍 Location found

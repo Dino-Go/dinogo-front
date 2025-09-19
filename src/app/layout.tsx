@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import '@mysten/dapp-kit/dist/index.css';
+
+// Providers
+import { Providers } from './components/providers';
 
 const geistSans = Geist({
 	variable: "--font-geist-sans",
@@ -65,10 +69,8 @@ export default function RootLayout({
 				<meta name="apple-mobile-web-app-title" content="Suimming Map" />
 				<link rel="apple-touch-startup-image" href="/icon-512x512.png" />
 			</head>
-			<body
-				className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-			>
-				{children}
+			<body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+				<Providers>{children}</Providers>
 			</body>
 		</html>
 	);
