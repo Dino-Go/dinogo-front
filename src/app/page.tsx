@@ -11,7 +11,6 @@ export default function Home() {
 
     useEffect(() => {
         if (currentAccount) {
-            // Redirect to map page when logged in
             router.push('/map');
         }
     }, [currentAccount, router]);
