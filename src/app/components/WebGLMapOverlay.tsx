@@ -16,6 +16,10 @@ interface WebGLMapOverlayProps {
   className?: string;
 }
 
+// Geofencing configuration constants
+const GEOFENCE_RADIUS_METERS = 50; // Proximity radius around each checkpoint
+const DWELL_THRESHOLD_MS = 10000; // 10 seconds to trigger dwell event
+
 // Helper function to calculate distance between two coordinates
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371; // Radius of the earth in km
@@ -61,6 +65,12 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
   const [userHeading, setUserHeading] = useState(0); // User's direction of movement
   const [lastPosition, setLastPosition] = useState<{ lat: number, lng: number } | null>(null);
   const [isNavigationMode, setIsNavigationMode] = useState(true); // Auto-follow user
+
+  // Geofencing state management
+  const [insideCheckpoints, setInsideCheckpoints] = useState<Set<string>>(new Set());
+  const enterTimestamps = useRef<Map<string, number>>(new Map());
+  const dwellTriggered = useRef<Set<string>>(new Set());
+
   const userGltfRef = useRef<any>(null);
   const checkpointGltfRefs = useRef<Map<string, any>>(new Map());
   const mapInstanceRef = useRef<any>(null);
@@ -78,6 +88,22 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
   const formatAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  // Geofencing event handlers
+  const onEnterCheckpoint = (checkpoint: any) => {
+    console.log(`🚶‍♂️ Entered checkpoint: ${checkpoint.label} (${checkpoint.id})`);
+    // TODO: Add custom actions (UI notifications, sound, API calls, etc.)
+  };
+
+  const onExitCheckpoint = (checkpoint: any) => {
+    console.log(`🚶‍♂️ Exited checkpoint: ${checkpoint.label} (${checkpoint.id})`);
+    // TODO: Add custom actions
+  };
+
+  const onDwellCheckpoint = (checkpoint: any) => {
+    console.log(`⏰ Dwelling at checkpoint: ${checkpoint.label} (${checkpoint.id}) for ${DWELL_THRESHOLD_MS / 1000}s`);
+    // TODO: Add custom actions (achievements, special rewards, etc.)
   };
 
   useEffect(() => {
@@ -192,6 +218,58 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
       }
     }
   }, [userLocation]);
+
+  // Geofencing logic: detect enter/exit/dwell events for checkpoints
+  useEffect(() => {
+    if (!checkpoints.checkpoints || checkpoints.checkpoints.length === 0) {
+      return;
+    }
+
+    const newInsideCheckpoints = new Set<string>();
+    const currentTime = Date.now();
+
+    checkpoints.checkpoints.forEach((checkpoint) => {
+      // Calculate distance from user to checkpoint
+      const distanceKm = getDistanceFromLatLonInKm(
+        userLocation.lat, userLocation.lng,
+        checkpoint.lat, checkpoint.lng
+      );
+      const distanceMeters = distanceKm * 1000;
+
+      if (distanceMeters <= GEOFENCE_RADIUS_METERS) {
+        // User is inside geofence radius
+        newInsideCheckpoints.add(checkpoint.id);
+
+        if (!insideCheckpoints.has(checkpoint.id)) {
+          // ENTER event: user just entered this checkpoint
+          onEnterCheckpoint(checkpoint);
+          enterTimestamps.current.set(checkpoint.id, currentTime);
+          dwellTriggered.current.delete(checkpoint.id); // Reset dwell trigger
+        } else {
+          // Already inside: check for DWELL event
+          const enterTime = enterTimestamps.current.get(checkpoint.id);
+          if (enterTime &&
+              currentTime - enterTime >= DWELL_THRESHOLD_MS &&
+              !dwellTriggered.current.has(checkpoint.id)) {
+            // DWELL event: user has been inside for threshold duration
+            onDwellCheckpoint(checkpoint);
+            dwellTriggered.current.add(checkpoint.id); // Mark to prevent repeated triggers
+          }
+        }
+      } else {
+        // User is outside geofence radius
+        if (insideCheckpoints.has(checkpoint.id)) {
+          // EXIT event: user just left this checkpoint
+          onExitCheckpoint(checkpoint);
+          enterTimestamps.current.delete(checkpoint.id);
+          dwellTriggered.current.delete(checkpoint.id);
+        }
+      }
+    });
+
+    // Update state with new inside checkpoints
+    setInsideCheckpoints(newInsideCheckpoints);
+  }, [userLocation, checkpoints.checkpoints]);
 
 
   // Effect to trigger map re-initialization when checkpoints are first loaded
@@ -636,6 +714,33 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
           >
             {isNavigationMode ? '🔄 Auto-Follow ON' : '📍 Manual Mode'}
           </button>
+        </div>
+
+        {/* Geofencing status */}
+        <div className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
+          <div className="font-bold mb-1 flex items-center gap-2">
+            🛡️ Geofencing
+            {isLocationTracking && (
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            )}
+            {insideCheckpoints.size > 0 && (
+              <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
+            )}
+          </div>
+          <div className="font-mono text-xs">
+            Location: {isLocationTracking ? '🟢 Tracking' : '🔴 Inactive'}<br />
+            Radius: {GEOFENCE_RADIUS_METERS}m<br />
+            Dwell Time: {DWELL_THRESHOLD_MS / 1000}s<br />
+            Inside: {insideCheckpoints.size} checkpoint{insideCheckpoints.size !== 1 ? 's' : ''}<br />
+            {insideCheckpoints.size > 0 && (
+              <div className="text-yellow-200 mt-1">
+                Active: {Array.from(insideCheckpoints).map(id => {
+                  const checkpoint = checkpoints.checkpoints?.find(cp => cp.id === id);
+                  return checkpoint?.label || id;
+                }).join(', ')}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
