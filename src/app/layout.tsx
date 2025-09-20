@@ -4,7 +4,7 @@ import "./globals.css";
 import '@mysten/dapp-kit/dist/index.css';
 
 // Providers
-import { Providers } from "./components/Providers";
+import { Providers } from "./components/providers";
 
 const geistSans = Geist({
 	variable: "--font-geist-sans",
