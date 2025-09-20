@@ -4,7 +4,7 @@ import { SuiClientProvider, createNetworkConfig, WalletProvider } from '@mysten/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getFullnodeUrl } from '@mysten/sui.js/client';
 import { PropsWithChildren, useMemo, useState } from 'react';
-import RegisterEnokiWallets from './RegisterEnokiWallets';
+import RegisterEnokiWallets from '@/app/components/RegisterEnokiWallets';
 
 const { networkConfig } = createNetworkConfig({
 	testnet: { url: getFullnodeUrl('testnet') },
