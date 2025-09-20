@@ -35,10 +35,12 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const currentInterpolatedPosition = useRef<LocationWithAccuracy | null>(null);
 	const interpolationStartTime = useRef<number>(0);
 	const previousObjectRef = useRef<THREE.Group | null>(null);
+	const lastCameraUpdateRef = useRef<number>(0);
 
 	// Mobile device detection
 	const isMobile: boolean = isMobileDevice();
 	const interpolationDuration = isMobile ? 3000 : 2000; // Mobile-optimized duration
+	const cameraUpdateThrottle = 500; // Minimum 500ms between camera updates
 
 	// Wallet functionality
 	const currentAccount = useCurrentAccount();
@@ -46,7 +48,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const router = useRouter();
 	const { addNotification } = useToast();
 
-	// Location tracking - always active
+	// Location tracking - always active with optimized settings
 	const {
 		state: locationState,
 		startWatching,
@@ -55,8 +57,8 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		enableHighAccuracy: true,
 		timeout: 10000,
 		maximumAge: 60000,
-		minDistanceThreshold: 3, // 3 meters for more responsive movement
-		updateThrottle: 1500, // 1.5 seconds for smooth updates
+		minDistanceThreshold: 5, // 5 meters to reduce micro-movements
+		updateThrottle: 2000, // 2 seconds to prevent rapid camera updates
 		maxAccuracy: 50 // 50 meters max accuracy
 	});
 
@@ -95,47 +97,71 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		addNotification('info', newTracking ? 'Camera tracking enabled' : 'Camera tracking disabled');
 	}, [isCameraTracking, locationState.currentLocation, addNotification]);
 
-	// Utility functions from trimet.js
-	const simpleRange = useCallback((loc: number, pos: number, num: number): boolean => {
-		return loc >= pos - num && loc <= pos + num;
-	}, []);
 
-	// Camera movement function (trimet.js style)
+	// Camera movement function (safe implementation to prevent flickering)
 	const moveCamera = useCallback((objectPosition: THREE.Vector3) => {
 		if (!cameraFocusOn.enabled || !map || !overlay) return;
 
-		// Convert current map center to vector for comparison
-		let vec = (overlay as any).latLngAltitudeToVector3(mapCenter);
+		const now = Date.now();
 
-		// Follow object left/right (x-axis)
-		if (vec.x < objectPosition.x) {
-			while (!simpleRange(vec.x, objectPosition.x, 10)) {
-				mapCenter.lng += 0.00000001; // Move right
-				vec = (overlay as any).latLngAltitudeToVector3(mapCenter);
-			}
-		} else {
-			while (!simpleRange(vec.x, objectPosition.x, 10)) {
-				mapCenter.lng -= 0.00000001; // Move left
-				vec = (overlay as any).latLngAltitudeToVector3(mapCenter);
-			}
+		// Throttle camera updates to prevent flickering
+		if (now - lastCameraUpdateRef.current < cameraUpdateThrottle) {
+			return;
 		}
 
-		// Follow object up/down (y-axis)
-		if (vec.y < objectPosition.y) {
-			while (!simpleRange(vec.y, objectPosition.y, 10)) {
-				mapCenter.lat += 0.00000001; // Move up
-				vec = (overlay as any).latLngAltitudeToVector3(mapCenter);
-			}
-		} else {
-			while (!simpleRange(vec.y, objectPosition.y, 10)) {
-				mapCenter.lat -= 0.00000001; // Move down
-				vec = (overlay as any).latLngAltitudeToVector3(mapCenter);
-			}
+		// Convert object position back to lat/lng coordinates
+		// Try using the overlay method, fallback to approximation if not available
+		let objectLatLng;
+		try {
+			objectLatLng = (overlay as any).vector3ToLatLngAltitude?.(objectPosition);
+		} catch {
+			// Fallback: use current interpolated position if conversion fails
+			objectLatLng = currentInterpolatedPosition.current;
 		}
 
-		// Update Google Maps camera
-		(map as any).moveCamera({ center: mapCenter });
-	}, [simpleRange]);
+		if (!objectLatLng) return;
+
+		// Calculate distance from current map center to object
+		const currentCenter = (map as any).getCenter();
+		if (!currentCenter) return;
+
+		const currentCenterLat = currentCenter.lat();
+		const currentCenterLng = currentCenter.lng();
+
+		// Calculate distance to determine if camera movement is needed
+		const distance = Math.sqrt(
+			Math.pow(objectLatLng.lat - currentCenterLat, 2) +
+			Math.pow(objectLatLng.lng - currentCenterLng, 2)
+		);
+
+		// Only move camera if object is far enough from center (prevent micro-movements)
+		const moveThreshold = 0.0001; // ~11 meters at equator
+		if (distance < moveThreshold) return;
+
+		// Smooth camera movement - interpolate towards object position
+		const lerpFactor = 0.1; // 10% movement each update for smooth following
+		const newLat = currentCenterLat + (objectLatLng.lat - currentCenterLat) * lerpFactor;
+		const newLng = currentCenterLng + (objectLatLng.lng - currentCenterLng) * lerpFactor;
+
+		// Update map center without affecting zoom, tilt, heading
+		const newCenter = { lat: newLat, lng: newLng };
+
+		// Get current camera state to preserve zoom, tilt, heading
+		const currentMapOptions = {
+			center: newCenter,
+			zoom: (map as any).getZoom(),
+			tilt: (map as any).getTilt(),
+			heading: (map as any).getHeading()
+		};
+
+		// Move camera with explicit preservation of view parameters
+		(map as any).moveCamera(currentMapOptions);
+
+		// Update our tracking variables
+		mapCenter.lat = newLat;
+		mapCenter.lng = newLng;
+		lastCameraUpdateRef.current = now;
+	}, [cameraUpdateThrottle]);
 
 	// Smooth position interpolation for 3D object
 	const interpolatePosition = useCallback((startPosition: LocationWithAccuracy, endPosition: LocationWithAccuracy, elapsed: number): LocationWithAccuracy => {
@@ -246,8 +272,11 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 				previousObjectRef.current = objectClone;
 			}
 
-			// Update camera tracking (trimet.js style)
-			moveCamera(objectPosition);
+			// Update camera tracking only when animation is near completion to prevent flickering
+			const animationProgress = elapsed / interpolationDuration;
+			if (animationProgress > 0.8 || elapsed >= interpolationDuration) {
+				moveCamera(objectPosition);
+			}
 
 			// Update current position
 			currentInterpolatedPosition.current = interpolatedPos;
