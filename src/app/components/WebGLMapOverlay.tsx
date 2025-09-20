@@ -497,10 +497,15 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
           // Use current user location for positioning the GLTF object
           const currentLoc = currentLocationRef.current;
+
+          // Detect mobile device and fix altitude issues
+          const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+          const safeAltitude = isMobile ? 5 : 10; // Cap altitude for mobile
+
           const latLngAltitudeLiteral = {
             lat: currentLoc.lat,
             lng: currentLoc.lng,
-            altitude: currentLoc.altitude,
+            altitude: safeAltitude,
           };
 
           const matrix = transformer.fromLatLngAltitude(latLngAltitudeLiteral);
@@ -508,14 +513,18 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
           // Update GLTF object position and rotation to match user location and heading
           if (userGltfRef.current) {
-            // The GLTF object is positioned relative to the transformed coordinate system
-            // Since we're transforming to the user's location, the object should be at origin
-            userGltfRef.current.position.set(0, 0, 0);
+            // Position user marker at ground level based on device type
+            const userZ = isMobile ? -30 : -10; // Lower on mobile to ensure ground contact
+            userGltfRef.current.position.set(0, 0, userZ);
 
             // Rotate the marker to face the direction of movement
-            // Convert heading to radians and apply rotation
             const headingRadians = (userHeading * Math.PI) / 180;
-            userGltfRef.current.rotation.z = -headingRadians; // Negative for correct orientation
+            userGltfRef.current.rotation.z = -headingRadians;
+
+            // Debug mobile positioning occasionally
+            if (isMobile && Math.random() < 0.01) {
+              console.log(`📱 Mobile user marker: altitude=${safeAltitude}m, z=${userZ}, heading=${userHeading.toFixed(1)}°`);
+            }
           }
 
           // Update checkpoint pin positions
@@ -610,6 +619,37 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
       {/* Map status indicator and tracking info - Top Left */}
       <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+        {isMapReady && (
+          <div className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">
+            🗺️ Map Ready
+          </div>
+        )}
+
+        {/* User location tracking */}
+        <div className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
+          <div className="font-bold mb-1 flex items-center gap-2">
+            📍 User Location
+            {isLocationTracking && (
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            )}
+            {/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && (
+              <span className="text-yellow-200">📱</span>
+            )}
+          </div>
+          <div className="font-mono text-xs">
+            Lat: {userLocation.lat.toFixed(6)}<br />
+            Lng: {userLocation.lng.toFixed(6)}<br />
+            Alt: {userLocation.altitude.toFixed(1)}m<br />
+            Heading: {userHeading.toFixed(1)}°
+            {/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && (
+              <><br /><span className="text-yellow-200">Mobile: Alt Fixed to 5m</span></>
+            )}
+          </div>
+          {isLocationTracking && (
+            <div className="text-xs text-green-200 mt-1">🔄 Live tracking</div>
+          )}
+        </div>
+
         {/* Navigation mode toggle */}
         <div className="bg-orange-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
           <div className="font-bold mb-1 flex items-center gap-2">
@@ -627,6 +667,35 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
           >
             {isNavigationMode ? '🔄 Auto-Follow ON' : '📍 Manual Mode'}
           </button>
+        </div>
+
+        {/* Camera view tracking */}
+        <div className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
+          <div className="font-bold mb-1">🎥 Camera View</div>
+          <div className="font-mono text-xs">
+            Tilt: {cameraView.tilt.toFixed(1)}°<br />
+            Heading: {cameraView.heading.toFixed(1)}°<br />
+            Zoom: {cameraView.zoom.toFixed(1)}
+          </div>
+        </div>
+
+        {/* Checkpoint pins status */}
+        <div className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
+          <div className="font-bold mb-1 flex items-center gap-2">
+            📍 Checkpoint Pins
+            {checkpointGltfRefs.current.size > 0 && (
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            )}
+          </div>
+          <div className="font-mono text-xs">
+            Data Loading: {checkpoints.loading ? 'Yes' : 'No'}<br />
+            Available: {checkpoints.checkpoints?.length || 0}<br />
+            Loaded: {checkpointGltfRefs.current.size}<br />
+            Scale: 120x (Huge)<br />
+            Height: 150m<br />
+            Map Key: {mapKey}
+            {checkpoints.error && <><br /><span className="text-red-300">Error: {checkpoints.error}</span></>}
+          </div>
         </div>
       </div>
     </div>
