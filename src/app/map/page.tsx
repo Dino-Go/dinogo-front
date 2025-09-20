@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import WebGLMapOverlay from "@/app/components/WebGLMapOverlay";
 import { hasUserProfile } from "@/utils/userProfile";
 
@@ -63,12 +62,6 @@ export default function MapPage() {
     return (
         <div className="relative w-full h-screen">
             <WebGLMapOverlay className="w-full h-screen" />
-            <Link
-                href="/my"
-                className="absolute top-4 right-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium shadow-lg transition-colors z-10"
-            >
-                My Letters
-            </Link>
         </div>
     );
 }

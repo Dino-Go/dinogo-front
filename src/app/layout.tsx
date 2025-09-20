@@ -20,6 +20,11 @@ export const metadata: Metadata = {
 	title: "Suimming WebGL Map",
 	description: "Interactive WebGL map overlay with Three.js - optimized for mobile",
 	manifest: "/manifest.json",
+	icons: {
+		icon: "/favicon.ico",
+		shortcut: "/favicon.ico",
+		apple: "/icon-192x192.png",
+	},
 	appleWebApp: {
 		capable: true,
 		statusBarStyle: "default",
@@ -66,14 +71,19 @@ export default function RootLayout({
 					}
 				`}</style>
 
+				{/* Favicon configuration */}
+				<link rel="icon" href="/favicon.ico" sizes="any" />
+				<link rel="shortcut icon" href="/favicon.ico" />
+
+				{/* Apple touch icons */}
 				<link rel="apple-touch-icon" href="/icon-192x192.png" />
 				<link rel="apple-touch-icon" sizes="152x152" href="/icon-192x192.png" />
 				<link rel="apple-touch-icon" sizes="180x180" href="/icon-192x192.png" />
 				<link rel="apple-touch-icon" sizes="167x167" href="/icon-192x192.png" />
 
+				{/* PNG icons for modern browsers */}
 				<link rel="icon" type="image/png" sizes="32x32" href="/icon-192x192.png" />
 				<link rel="icon" type="image/png" sizes="16x16" href="/icon-192x192.png" />
-				<link rel="shortcut icon" href="/favicon.ico" />
 
 				<meta name="apple-mobile-web-app-title" content="Suimming Map" />
 				<link rel="apple-touch-startup-image" href="/icon-512x512.png" />

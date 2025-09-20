@@ -95,7 +95,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
   };
 
   const handleMyPage = () => {
-    router.push('/mypage');
+    router.push('/my');
   };
 
   const formatAddress = (address: string) => {
