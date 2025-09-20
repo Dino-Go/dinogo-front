@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSuiClient, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { hasUserProfile, getUserProfile, parseUserProfile } from "@/utils/userProfile";
+import { WalrusClientManager } from '@/web3/walrusClient';
+import { Transaction } from '@mysten/sui/transactions';
 
 // NFT Card Component
 interface NFTCardProps {
@@ -21,172 +23,114 @@ const NFTCard: React.FC<NFTCardProps> = ({ nft }) => {
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [imageLoading, setImageLoading] = useState(true);
     const [imageError, setImageError] = useState(false);
-    const [currentUrlIndex, setCurrentUrlIndex] = useState(0);
-    const [loadTimeout, setLoadTimeout] = useState<NodeJS.Timeout | null>(null);
     const [debugInfo, setDebugInfo] = useState<{
-        httpStatus?: number;
+        fileSize?: number;
         errorType?: string;
-        corsIssue?: boolean;
+        loadTime?: number;
+        blobUrl?: boolean;
+        httpStatus?: number;
         contentType?: string;
-        responseSize?: number;
+        corsIssue?: boolean;
     }>({});
 
-    // Multiple Walrus gateway URLs to try
-    const walrusUrls = [
-        `https://aggregator.walrus-testnet.walrus.space/v1/${nft.walrusCid}`,
-        `https://publisher.walrus-testnet.walrus.space/v1/store/${nft.walrusCid}`,
-        `https://walrus-testnet-publisher.nodes.guru/v1/store/${nft.walrusCid}`,
-        `https://aggregator.walrus-testnet.walrus.space/v1/blob/${nft.walrusCid}`,
-        `https://publisher.walrus-testnet.walrus.space/v1/blob/${nft.walrusCid}`,
-        // Additional backup endpoints
-        `https://walrus-testnet.blockscope.net/v1/store/${nft.walrusCid}`,
-        `https://walrus.krates.ai/v1/store/${nft.walrusCid}`
-    ];
+    // Get suiClient for Walrus SDK usage
+    const suiClient = useSuiClient();
 
-    // Advanced debugging function to test Walrus URLs
-    const testWalrusUrl = async (url: string) => {
-        console.log(`🔍 Testing Walrus URL: ${url}`);
+    // Proper Walrus SDK file reading function
+    const loadWalrusImage = async (walrusCid: string): Promise<string | null> => {
+        console.log(`🐋 Loading Walrus file: ${walrusCid}`);
 
         try {
-            const response = await fetch(url, {
-                method: 'HEAD', // Use HEAD first to check without downloading
-                mode: 'cors',
-                cache: 'no-cache'
+            // Use official Walrus SDK to get file
+            const walrusClient = new WalrusClientManager({
+                network: 'testnet',
+                suiClient: suiClient
             });
 
-            console.log(`✅ HEAD Response Status: ${response.status}`);
-            console.log(`📦 Content-Type: ${response.headers.get('content-type')}`);
-            console.log(`📏 Content-Length: ${response.headers.get('content-length')}`);
+            console.log('📥 Fetching file using official SDK...');
+            const startTime = Date.now();
 
-            if (response.ok) {
-                const contentType = response.headers.get('content-type') || '';
-                if (contentType.startsWith('image/')) {
-                    console.log(`🖼️ Valid image found at: ${url}`);
-                    return { success: true, contentType, status: response.status };
-                } else {
-                    console.log(`⚠️ Not an image. Content-Type: ${contentType}`);
-                    return { success: false, error: `Invalid content-type: ${contentType}`, status: response.status };
-                }
-            } else {
-                console.log(`❌ HTTP Error: ${response.status} ${response.statusText}`);
-                return { success: false, error: `HTTP ${response.status}`, status: response.status };
-            }
+            // Get file bytes using proper SDK method
+            const fileBytes = await walrusClient.downloadFile(walrusCid);
+            const loadTime = Date.now() - startTime;
+
+            console.log(`✅ File downloaded successfully in ${loadTime}ms, size: ${fileBytes.length} bytes`);
+
+            // Convert bytes to blob URL for image display
+            // Create a new Uint8Array to ensure compatibility with Blob constructor
+            const imageData = new Uint8Array(fileBytes);
+            const blob = new Blob([imageData], { type: 'image/png' });
+            const blobUrl = URL.createObjectURL(blob);
+
+            // Update debug info
+            setDebugInfo({
+                fileSize: fileBytes.length,
+                loadTime,
+                blobUrl: true,
+                errorType: undefined
+            });
+
+            console.log(`🔗 Created blob URL: ${blobUrl}`);
+            return blobUrl;
+
         } catch (error: any) {
-            console.log(`🚫 Network Error:`, error);
+            console.error('❌ Failed to load Walrus file:', error);
 
-            // Detect CORS issues
-            if (error.name === 'TypeError' && error.message.includes('CORS')) {
-                return { success: false, error: 'CORS blocked', corsIssue: true };
-            }
+            // Update debug info with error
+            setDebugInfo({
+                errorType: error.message || 'Failed to load from Walrus',
+                blobUrl: false
+            });
 
-            return { success: false, error: error.message, networkError: true };
+            return null;
         }
     };
 
     useEffect(() => {
-        if (nft.walrusCid && walrusUrls.length > 0) {
-            console.log('🎯 NFT walrusCid:', nft.walrusCid);
-            console.log('🔄 Starting comprehensive Walrus testing...');
+        if (nft.walrusCid) {
+            console.log('🎯 Loading NFT image from Walrus CID:', nft.walrusCid);
+            setImageLoading(true);
+            setImageError(false);
 
-            // Test the URL before trying to load as image
-            testWalrusUrl(walrusUrls[0]).then(result => {
-                setDebugInfo({
-                    httpStatus: result.status,
-                    errorType: result.error,
-                    corsIssue: result.corsIssue,
-                    contentType: result.contentType,
+            // Load image using proper Walrus SDK
+            loadWalrusImage(nft.walrusCid)
+                .then(blobUrl => {
+                    if (blobUrl) {
+                        console.log('✅ Successfully loaded image from Walrus');
+                        setImageUrl(blobUrl);
+                        setImageLoading(false);
+                        setImageError(false);
+                    } else {
+                        console.log('❌ Failed to load image from Walrus');
+                        setImageLoading(false);
+                        setImageError(true);
+                    }
+                })
+                .catch(error => {
+                    console.error('💥 Error loading Walrus image:', error);
+                    setImageLoading(false);
+                    setImageError(true);
                 });
-
-                if (result.success) {
-                    console.log('✅ URL test passed, loading image...');
-                    setImageUrl(walrusUrls[0]);
-                    setCurrentUrlIndex(0);
-                    setImageError(false);
-                    setImageLoading(true);
-
-                    // Set a timeout to try next URL if this one takes too long
-                    const timeout = setTimeout(() => {
-                        console.log('⏰ Image load timeout, trying next URL...');
-                        handleImageError();
-                    }, 10000);
-
-                    setLoadTimeout(timeout);
-                } else {
-                    console.log('❌ URL test failed, trying next URL...');
-                    handleImageError();
-                }
-            });
         }
 
-        // Cleanup timeout on unmount
+        // Cleanup blob URL on unmount to prevent memory leaks
         return () => {
-            if (loadTimeout) {
-                clearTimeout(loadTimeout);
+            if (imageUrl && imageUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(imageUrl);
             }
         };
     }, [nft.walrusCid]);
 
     const handleImageLoad = () => {
-        console.log('Image loaded successfully for NFT:', nft.id, 'using URL:', imageUrl);
-
-        // Clear timeout since image loaded successfully
-        if (loadTimeout) {
-            clearTimeout(loadTimeout);
-            setLoadTimeout(null);
-        }
-
+        console.log('Image loaded successfully for NFT:', nft.id, 'using blob URL');
         setImageLoading(false);
         setImageError(false);
     };
 
     const handleImageError = () => {
-        console.error('❌ Failed to load image for NFT:', nft.id, 'Walrus CID:', nft.walrusCid, 'URL:', imageUrl);
-
-        // Clear current timeout
-        if (loadTimeout) {
-            clearTimeout(loadTimeout);
-            setLoadTimeout(null);
-        }
-
-        // Try next URL in the list
-        const nextIndex = currentUrlIndex + 1;
-        if (nextIndex < walrusUrls.length) {
-            console.log(`🔄 Trying alternative URL (${nextIndex + 1}/${walrusUrls.length}):`, walrusUrls[nextIndex]);
-
-            // Test the next URL before trying to load it
-            testWalrusUrl(walrusUrls[nextIndex]).then(result => {
-                setDebugInfo(prev => ({
-                    ...prev,
-                    httpStatus: result.status,
-                    errorType: result.error,
-                    corsIssue: result.corsIssue,
-                    contentType: result.contentType,
-                }));
-
-                if (result.success) {
-                    console.log('✅ Next URL test passed, loading image...');
-                    setCurrentUrlIndex(nextIndex);
-                    setImageUrl(walrusUrls[nextIndex]);
-                    setImageLoading(true);
-                    setImageError(false);
-
-                    // Set new timeout for this URL
-                    const timeout = setTimeout(() => {
-                        console.log('⏰ Image load timeout, trying next URL...');
-                        handleImageError();
-                    }, 8000);
-                    setLoadTimeout(timeout);
-                } else {
-                    console.log('❌ Next URL test also failed, trying subsequent URL...');
-                    setCurrentUrlIndex(nextIndex);
-                    handleImageError(); // Recursively try next URL
-                }
-            });
-        } else {
-            console.log('🛑 All Walrus URLs failed, showing fallback image');
-            setImageLoading(false);
-            setImageError(true);
-        }
+        console.error('❌ Failed to load image for NFT:', nft.id, 'Walrus CID:', nft.walrusCid);
+        setImageLoading(false);
+        setImageError(true);
     };
 
     // Generate a fallback canvas image if Walrus image fails
@@ -312,12 +256,15 @@ const NFTCard: React.FC<NFTCardProps> = ({ nft }) => {
                 <div className="flex gap-2">
                     <button
                         onClick={() => {
-                            const urlToTry = imageUrl || walrusUrls[0];
-                            console.log('Testing Walrus URL:', urlToTry);
-                            window.open(urlToTry, '_blank');
+                            if (imageUrl) {
+                                console.log('Opening blob URL in new tab:', imageUrl);
+                                window.open(imageUrl, '_blank');
+                            } else {
+                                console.log('No image URL available');
+                            }
                         }}
                         className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white text-xs font-medium py-2 px-3 rounded-lg transition-all duration-200 transform hover:scale-105"
-                        title={`Open: ${imageUrl || walrusUrls[0]}`}
+                        title={imageUrl ? 'Open image in new tab' : 'No image available'}
                     >
                         <svg className="w-4 h-4 mr-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -327,25 +274,29 @@ const NFTCard: React.FC<NFTCardProps> = ({ nft }) => {
                     {imageError && (
                         <button
                             onClick={() => {
-                                console.log('Retrying image load...');
-
-                                // Clear any existing timeout
-                                if (loadTimeout) {
-                                    clearTimeout(loadTimeout);
-                                    setLoadTimeout(null);
-                                }
-
-                                setCurrentUrlIndex(0);
-                                setImageUrl(walrusUrls[0]);
+                                console.log('Retrying Walrus image load...');
                                 setImageError(false);
                                 setImageLoading(true);
 
-                                // Set new timeout
-                                const timeout = setTimeout(() => {
-                                    console.log('Image load timeout, trying next URL...');
-                                    handleImageError();
-                                }, 10000);
-                                setLoadTimeout(timeout);
+                                // Retry loading from Walrus
+                                loadWalrusImage(nft.walrusCid)
+                                    .then(blobUrl => {
+                                        if (blobUrl) {
+                                            console.log('✅ Retry successful');
+                                            setImageUrl(blobUrl);
+                                            setImageLoading(false);
+                                            setImageError(false);
+                                        } else {
+                                            console.log('❌ Retry failed');
+                                            setImageLoading(false);
+                                            setImageError(true);
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error('💥 Retry error:', error);
+                                        setImageLoading(false);
+                                        setImageError(true);
+                                    });
                             }}
                             className="bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-medium py-2 px-3 rounded-lg transition-colors"
                             title="Retry loading image"
@@ -382,26 +333,28 @@ const NFTCard: React.FC<NFTCardProps> = ({ nft }) => {
                                 <span className="font-mono text-blue-900">{nft.walrusCid}</span>
                             </div>
 
-                            <div className="flex justify-between">
-                                <span className="text-blue-700">Progress:</span>
-                                <span className="text-blue-900">
-                                    {imageError ? 'Failed' : 'Testing'} {currentUrlIndex + 1}/{walrusUrls.length} URLs
-                                </span>
-                            </div>
-
-                            {debugInfo.httpStatus && (
+                            {debugInfo.fileSize && (
                                 <div className="flex justify-between">
-                                    <span className="text-blue-700">HTTP Status:</span>
-                                    <span className={`font-semibold ${debugInfo.httpStatus >= 200 && debugInfo.httpStatus < 300 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {debugInfo.httpStatus}
+                                    <span className="text-blue-700">File Size:</span>
+                                    <span className="text-blue-900">
+                                        {(debugInfo.fileSize / 1024).toFixed(1)} KB
                                     </span>
                                 </div>
                             )}
 
-                            {debugInfo.contentType && (
+                            {debugInfo.loadTime && (
                                 <div className="flex justify-between">
-                                    <span className="text-blue-700">Content-Type:</span>
-                                    <span className="font-mono text-blue-900">{debugInfo.contentType}</span>
+                                    <span className="text-blue-700">Load Time:</span>
+                                    <span className="text-green-600 font-semibold">{debugInfo.loadTime}ms</span>
+                                </div>
+                            )}
+
+                            {debugInfo.blobUrl !== undefined && (
+                                <div className="flex justify-between">
+                                    <span className="text-blue-700">Blob URL:</span>
+                                    <span className={`font-semibold ${debugInfo.blobUrl ? 'text-green-600' : 'text-red-600'}`}>
+                                        {debugInfo.blobUrl ? '✅ Created' : '❌ Failed'}
+                                    </span>
                                 </div>
                             )}
 
@@ -412,46 +365,45 @@ const NFTCard: React.FC<NFTCardProps> = ({ nft }) => {
                                 </div>
                             )}
 
-                            {debugInfo.corsIssue && (
-                                <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded">
-                                    <div className="text-red-800 font-semibold">🚫 CORS Issue Detected</div>
-                                    <div className="text-red-700 text-xs">Browser blocking cross-origin requests</div>
-                                </div>
-                            )}
-
                             <div className="mt-2 pt-2 border-t border-blue-200">
                                 <div className="text-blue-600 font-semibold">
-                                    {imageLoading && '⏱️ Testing endpoint with HEAD request...'}
-                                    {imageError && '❌ All Walrus endpoints failed - showing fallback'}
+                                    {imageLoading && '⏱️ Loading from Walrus SDK...'}
+                                    {imageError && '❌ Walrus SDK load failed - showing fallback'}
+                                    {!imageLoading && !imageError && debugInfo.blobUrl && '✅ Successfully loaded with Walrus SDK'}
                                 </div>
-                            </div>
-                        </div>
-
-                        {/* Current URL being tested */}
-                        <div className="mt-2 pt-2 border-t border-blue-200">
-                            <div className="text-blue-700 text-xs">Current URL:</div>
-                            <div className="font-mono text-xs text-blue-900 break-all bg-white p-1 rounded">
-                                {imageUrl || walrusUrls[currentUrlIndex]}
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* Manual Testing Section */}
+                {/* Walrus SDK Testing */}
                 <div className="mt-2">
                     <button
                         onClick={async () => {
-                            console.log('🧪 Manual comprehensive test starting...');
-                            for (let i = 0; i < walrusUrls.length; i++) {
-                                console.log(`\n🔍 Testing URL ${i + 1}/${walrusUrls.length}: ${walrusUrls[i]}`);
-                                const result = await testWalrusUrl(walrusUrls[i]);
-                                console.log(`Result:`, result);
+                            console.log(`🧪 Testing Walrus SDK for CID: ${nft.walrusCid}`);
+                            setImageLoading(true);
+                            setImageError(false);
+
+                            try {
+                                const blobUrl = await loadWalrusImage(nft.walrusCid);
+                                if (blobUrl) {
+                                    console.log('✅ Walrus SDK test successful!');
+                                    setImageUrl(blobUrl);
+                                    setImageLoading(false);
+                                } else {
+                                    console.log('❌ Walrus SDK test failed');
+                                    setImageLoading(false);
+                                    setImageError(true);
+                                }
+                            } catch (error) {
+                                console.error('💥 Walrus SDK test error:', error);
+                                setImageLoading(false);
+                                setImageError(true);
                             }
-                            console.log('🧪 Manual test completed. Check console for details.');
                         }}
                         className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium py-2 px-3 rounded-lg transition-colors border border-gray-300"
                     >
-                        🧪 Run Manual URL Test (Check Console)
+                        🧪 Test Walrus SDK (Check Console)
                     </button>
                 </div>
             </div>
@@ -463,6 +415,7 @@ export default function MyPage() {
     const currentAccount = useCurrentAccount();
     const suiClient = useSuiClient();
     const router = useRouter();
+    const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
     const [isCheckingProfile, setIsCheckingProfile] = useState(true);
     const [hasProfile, setHasProfile] = useState(false);
     const [userProfile, setUserProfile] = useState<any>(null);
@@ -748,9 +701,14 @@ export default function MyPage() {
     };
 
     const handleMintNFT = async () => {
-        if (!currentAccount || !userProfile) return;
+        if (!currentAccount || !userProfile) {
+            console.error('❌ Missing currentAccount or userProfile');
+            return;
+        }
 
         setIsMinting(true);
+        console.log('🎨 Starting NFT minting process...');
+
         try {
             // Generate used letters string
             const usedLettersArray: string[] = [];
@@ -760,26 +718,30 @@ export default function MyPage() {
                 }
             });
             const usedLettersString = usedLettersArray.join('');
+            console.log('📝 Used letters string:', usedLettersString);
 
             // Generate canvas image
+            console.log('🖼️ Generating canvas image...');
             const imageBlob = await generateCanvasImage();
+            console.log('✅ Canvas image generated, size:', imageBlob.size, 'bytes');
 
-            // Upload to Walrus
-            const formData = new FormData();
-            formData.append('file', imageBlob, 'sentence.png');
-
-            const walrusResponse = await fetch('/api/walrus-upload', {
-                method: 'POST',
-                body: formData
+            // Upload to Walrus using WalrusClient
+            console.log('🐋 Uploading to Walrus...');
+            const walrusClient = new WalrusClientManager({
+                network: 'testnet',
+                suiClient: suiClient
             });
 
-            if (!walrusResponse.ok) {
-                throw new Error('Failed to upload to Walrus');
-            }
+            const uploadResult = await walrusClient.uploadFile({
+                file: imageBlob,
+                epochs: 5
+            });
 
-            const { blobId } = await walrusResponse.json();
+            console.log('✅ Walrus upload successful:', uploadResult);
+            const blobId = uploadResult.blobId;
 
             // Get user profile ID
+            console.log('🔍 Finding user profile...');
             const profileObjects = await suiClient.getOwnedObjects({
                 owner: currentAccount.address,
                 filter: {
@@ -796,10 +758,10 @@ export default function MyPage() {
                 throw new Error('Invalid user profile ID');
             }
 
-            // Import necessary modules
-            const { Transaction } = await import('@mysten/sui/transactions');
+            console.log('👤 User profile ID:', userProfileId);
 
             // Create and execute transaction
+            console.log('🔗 Creating blockchain transaction...');
             const transaction = new Transaction();
             transaction.moveCall({
                 target: `${process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID}::nft::mint_sentence_from_profile`,
@@ -811,21 +773,36 @@ export default function MyPage() {
                 ]
             });
 
-            // Execute transaction (this would need proper integration with the dApp kit)
-            console.log('Transaction prepared for NFT minting');
-            alert('NFT minted successfully!');
+            console.log('📤 Executing transaction...');
 
-            // Reset form
-            setCurrentText('');
-            setTextGrid(new Array(50).fill(''));
-            setUsedLetters(new Map());
-            setShowModal(false);
+            // Execute transaction with proper error handling
+            signAndExecuteTransaction(
+                { transaction },
+                {
+                    onSuccess: (result) => {
+                        console.log('✅ NFT minted successfully!', result);
+                        alert('🎉 NFT minted successfully!');
 
-            // Reload NFTs and profile
-            await loadMintedNFTs();
+                        // Reset form
+                        setCurrentText('');
+                        setTextGrid(new Array(50).fill(''));
+                        setUsedLetters(new Map());
+                        setShowModal(false);
+
+                        // Reload NFTs and profile
+                        loadMintedNFTs();
+                    },
+                    onError: (error) => {
+                        console.error('❌ Transaction failed:', error);
+                        alert(`Failed to mint NFT: ${error.message}`);
+                    }
+                }
+            );
+
         } catch (error) {
-            console.error('Failed to mint NFT:', error);
-            alert('Failed to mint NFT. Please try again.');
+            console.error('💥 NFT minting failed:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            alert(`Failed to mint NFT: ${errorMessage}`);
         } finally {
             setIsMinting(false);
         }
