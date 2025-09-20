@@ -217,8 +217,8 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 				disableDefaultUI: true,
 				gestureHandling: "greedy",
 				headingInteractionEnabled: true,
-				draggable: false,
-				zoomControl: true
+				minZoom: 19,
+				maxZoom: 21
 			};
 
 			// Create map
