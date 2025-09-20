@@ -55,7 +55,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
   const [mapKey, setMapKey] = useState(0); // For forcing map re-initialization
 
   // User location and view tracking states
-  const [userLocation, setUserLocation] = useState({ lat: 40.7614, lng: -73.9776, altitude: 0 });
+  const [userLocation, setUserLocation] = useState({ lat: 40.7614, lng: -73.9776, altitude: 10 });
   const [cameraView, setCameraView] = useState({ tilt: 0, heading: 0, zoom: 18 });
   const [isLocationTracking, setIsLocationTracking] = useState(false);
   const [userHeading, setUserHeading] = useState(0); // User's direction of movement
@@ -229,11 +229,11 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
           // Try to load pin.gltf
           const gltf = await new Promise<any>((resolve, reject) => {
-            loader.load("/pin.gltf", resolve, undefined, reject);
+            loader.load("/meat.glb", resolve, undefined, reject);
           });
 
           // Large scale for better visibility
-          gltf.scene.scale.set(10, 10, 10); // Even larger!
+          gltf.scene.scale.set(600, 600, 600); // Even larger!
           gltf.scene.rotation.x = Math.PI;
 
           // Add to scene and store reference
@@ -416,12 +416,12 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
             // Load user marker
             loader.load(
-              "/labubu.glb",
+              "/raptor.glb",
               (gltf: any) => {
                 // Scale and orient the model for navigation use
-                gltf.scene.scale.set(15, 15, 15); // Slightly larger for visibility
+                gltf.scene.scale.set(10, 10, 10); // Slightly larger for visibility
                 gltf.scene.rotation.x = Math.PI / 2; // Orient upright
-                gltf.scene.rotation.z = 7.5; // Will be updated based on user heading
+                gltf.scene.position.z = 20; // Will be updated based on user heading
 
                 userGltfRef.current = gltf.scene;
                 scene.add(gltf.scene);
