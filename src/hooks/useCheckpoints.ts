@@ -21,11 +21,6 @@ export interface UseCheckpointsResult {
   refetch: () => Promise<void>;
 }
 
-/**
- * Hook to query all checkpoints from the blockchain and extract their coordinates
- * Note: Current implementation uses placeholder metadata. In production, this would
- * fetch actual metadata from Walrus using the meta_walrus_id from each checkpoint.
- */
 export function useCheckpoints(): UseCheckpointsResult {
   const [checkpoints, setCheckpoints] = useState<CheckpointCoordinates[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,20 +39,18 @@ export function useCheckpoints(): UseCheckpointsResult {
       setLoading(true);
       setError(null);
 
-      // Query all Checkpoint objects from the chain
-      // Note: In production, you might want to paginate this query for large numbers of checkpoints
+      // CheckpointCreated 이벤트 가져오기
       const checkpointObjects = await suiClient.queryEvents({
         query: {
           MoveEventType: `${process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID}::checkpoint::CheckpointCreated`
         }
       });
 
-      // Get the actual checkpoint objects using the addresses from events
+      // 이벤트에서 object 가져오기
       const checkpointObjectsData = await Promise.all(
         checkpointObjects.data.map(async (event) => {
           const eventData = event.parsedJson as any;
           const checkpointAddress = eventData.checkpoint;
-
           try {
             return await suiClient.getObject({
               id: checkpointAddress,
@@ -67,25 +60,25 @@ export function useCheckpoints(): UseCheckpointsResult {
                 showOwner: true
               }
             });
-          } catch (error) {
-            console.warn(`Failed to fetch checkpoint ${checkpointAddress}:`, error);
+          } catch (e) {
+            console.warn(`Failed to fetch checkpoint object ${checkpointAddress}:`, e);
             return null;
           }
         })
       );
 
-      // Filter out failed fetches and create a data structure similar to getOwnedObjects
-      const validCheckpointObjects = checkpointObjectsData.filter(obj => obj !== null && obj.data);
-      const checkpointObjectsResult = { data: validCheckpointObjects.map(obj => obj!) };
+      // 유효한 오브젝트만 남기기
+      const validObjs = checkpointObjectsData.filter(obj => obj !== null && obj.data);
+      const checkpointObjs = validObjs.map(obj => obj!);
 
-      const coordinatesPromises = checkpointObjectsResult.data.map(async (obj) => {
+      // 메타데이터로부터 좌표 읽기 (placeholder 아닌 것만)
+      const coordinatesPromises = checkpointObjs.map(async (obj) => {
         if (!obj.data?.content || obj.data.content.dataType !== 'moveObject') {
           return null;
         }
 
         const fields = (obj.data.content as any).fields;
 
-        // Extract basic checkpoint info
         const checkpointInfo = {
           id: obj.data.objectId,
           label: fields.label || 'Unknown Checkpoint',
@@ -94,57 +87,56 @@ export function useCheckpoints(): UseCheckpointsResult {
           sealRef: fields.seal_ref || ''
         };
 
-        // Fetch actual metadata from Walrus using meta_walrus_id
-        try {
-          // Check if this is a real Walrus blob ID or old placeholder
-          if (fields.meta_walrus_id && fields.meta_walrus_id.startsWith('metadata_')) {
-            // This is an old placeholder - return mock coordinates for backward compatibility
-            console.warn(`Checkpoint ${checkpointInfo.id} uses placeholder metadata. Real coordinates unavailable.`);
-            return {
-              ...checkpointInfo,
-              lat: 37.7749 + (Math.random() - 0.5) * 0.01, // Random coordinates around SF
-              lng: -122.4194 + (Math.random() - 0.5) * 0.01
-            };
-          }
-
-          // Check if blob exists on Walrus before attempting download
-          const exists = await blobExists(fields.meta_walrus_id);
-          if (!exists) {
-            console.warn(`Walrus blob ${fields.meta_walrus_id} does not exist for checkpoint ${checkpointInfo.id}`);
-            return null;
-          }
-
-          // Fetch metadata from Walrus
-          const metadata = await downloadJSON<{
-            latitude: number;
-            longitude: number;
-            description?: string;
-            image_url?: string;
-            type?: string;
-            version?: string;
-          }>(fields.meta_walrus_id);
-
-          // Validate metadata structure
-          if (!metadata || typeof metadata.latitude !== 'number' || typeof metadata.longitude !== 'number') {
-            console.error(`Invalid metadata structure for checkpoint ${checkpointInfo.id}:`, metadata);
-            return null;
-          }
-
-          return {
-            ...checkpointInfo,
-            lat: metadata.latitude,
-            lng: metadata.longitude
-          };
-
-        } catch (walrusError) {
-          console.error(`Failed to fetch metadata for checkpoint ${checkpointInfo.id}:`, walrusError);
+        const metaId = fields.meta_walrus_id;
+        // placeholder인지 체크
+        if (!metaId) {
+          // 메타가 없으면 무시
+          // console.warn(`Checkpoint ${checkpointInfo.id} has no metaWalrusId. Skipping.`);
           return null;
         }
+        if (metaId.startsWith('metadata_')) {
+          // placeholder이면 무시
+          // console.warn(`Checkpoint ${checkpointInfo.id} uses placeholder metadata. Skipping.`);
+          return null;
+        }
+
+        // 실제 blob 존재 확인
+        const exists = await blobExists(metaId);
+        if (!exists) {
+          // console.warn(`Walrus blob ${metaId} does not exist for checkpoint ${checkpointInfo.id}. Skipping.`);
+          return null;
+        }
+
+        // metadata JSON 다운로드
+        const metadata = await downloadJSON<{
+          latitude: number;
+          longitude: number;
+          description?: string;
+          image_url?: string;
+          type?: string;
+          version?: string;
+        }>(metaId);
+
+        if (
+          !metadata ||
+          typeof metadata.latitude !== 'number' ||
+          typeof metadata.longitude !== 'number'
+        ) {
+          console.error(`Invalid metadata structure for checkpoint ${checkpointInfo.id}:`, metadata);
+          return null;
+        }
+
+        return {
+          ...checkpointInfo,
+          lat: metadata.latitude,
+          lng: metadata.longitude
+        };
       });
 
       const results = await Promise.all(coordinatesPromises);
-      const validCheckpoints = results.filter((checkpoint): checkpoint is CheckpointCoordinates =>
-        checkpoint !== null
+      // null인 항목들 제거
+      const validCheckpoints = results.filter(
+        (cp): cp is CheckpointCoordinates => cp !== null
       );
 
       setCheckpoints(validCheckpoints);
@@ -168,17 +160,14 @@ export function useCheckpoints(): UseCheckpointsResult {
   };
 }
 
-/**
- * Utility function to extract just the coordinates from checkpoints
- * @param checkpoints Array of checkpoint data
- * @returns Array of coordinate objects with id, lat, lng
- */
-export function extractCoordinates(checkpoints: CheckpointCoordinates[]): Array<{id: string, lat: number, lng: number, label: string}> {
-  return checkpoints.map(checkpoint => ({
-    id: checkpoint.id,
-    lat: checkpoint.lat,
-    lng: checkpoint.lng,
-    label: checkpoint.label
+// 좌표만 꺼내는 유틸
+export function extractCoordinates(
+  checkpoints: CheckpointCoordinates[]
+): Array<{ id: string; lat: number; lng: number; label: string }> {
+  return checkpoints.map(cp => ({
+    id: cp.id,
+    lat: cp.lat,
+    lng: cp.lng,
+    label: cp.label
   }));
 }
-
