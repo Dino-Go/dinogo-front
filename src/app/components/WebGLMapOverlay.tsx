@@ -500,7 +500,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
           // Detect mobile device and fix altitude issues
           const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-          const safeAltitude = isMobile ? 5 : 10; // Cap altitude for mobile
+          const safeAltitude = isMobile ? 15 : 10; // Cap altitude for mobile
 
           const latLngAltitudeLiteral = {
             lat: currentLoc.lat,
@@ -514,7 +514,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
           // Update GLTF object position and rotation to match user location and heading
           if (userGltfRef.current) {
             // Position user marker at ground level based on device type
-            const userZ = isMobile ? -30 : -10; // Lower on mobile to ensure ground contact
+            const userZ = isMobile ? -15 : -10; // Lower on mobile to ensure ground contact
             userGltfRef.current.position.set(0, 0, userZ);
 
             // Rotate the marker to face the direction of movement
