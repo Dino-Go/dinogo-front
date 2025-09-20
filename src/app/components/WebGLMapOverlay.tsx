@@ -279,7 +279,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 					if (gltf.scene.children.length > 0) {
 						gltf.scene.children.forEach(child => {
 							child.rotation.x = Math.PI / 2;
-							child.position.z = 1;
+							child.position.z = isMobile ? -10 : 1;
 						});
 					}
 
