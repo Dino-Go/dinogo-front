@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
 import { useRouter } from 'next/navigation';
-import { useCheckpoints, extractCoordinates } from '@/hooks/useCheckpoints';
+import { useCheckpoints } from '@/hooks/useCheckpoints';
 
 // Google Maps type declarations
 declare global {
@@ -52,6 +52,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
+  const [mapKey, setMapKey] = useState(0); // For forcing map re-initialization
 
   // User location and view tracking states
   const [userLocation, setUserLocation] = useState({ lat: 40.7614, lng: -73.9776, altitude: 0 });
@@ -61,18 +62,14 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
   const [lastPosition, setLastPosition] = useState<{ lat: number, lng: number } | null>(null);
   const [isNavigationMode, setIsNavigationMode] = useState(true); // Auto-follow user
   const userGltfRef = useRef<any>(null);
+  const checkpointGltfRefs = useRef<Map<string, any>>(new Map());
   const mapInstanceRef = useRef<any>(null);
   const currentLocationRef = useRef(userLocation);
-  const checkpointPinsRef = useRef<any[]>([]);
-
+  const checkpoints = useCheckpoints();
   // Wallet functionality
   const currentAccount = useCurrentAccount();
   const { mutate: disconnect } = useDisconnectWallet();
   const router = useRouter();
-
-  // Checkpoint coordinates from blockchain
-  const { checkpoints, loading: checkpointsLoading } = useCheckpoints();
-  const checkpointCoordinates = extractCoordinates(checkpoints);
 
   const handleDisconnect = () => {
     disconnect();
@@ -196,8 +193,82 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
     }
   }, [userLocation]);
 
+
+  // Effect to trigger map re-initialization when checkpoints are first loaded
+  useEffect(() => {
+    if (isMapReady && !checkpoints.loading && checkpoints.checkpoints && checkpoints.checkpoints.length > 0) {
+      console.log('🔄 Checkpoints loaded! Re-initializing map for better pin loading...');
+      setIsMapReady(false);
+      setMapKey(prev => prev + 1);
+    }
+  }, [checkpoints.loading, checkpoints.checkpoints]);
+
   useEffect(() => {
     if (!mounted || !mapRef.current) return;
+
+    // Function to load checkpoint pins immediately when WebGL is ready
+    const loadCheckpointPinsNow = async (loader: any, scene: any, THREE: any) => {
+      if (!checkpoints.checkpoints || checkpoints.checkpoints.length === 0) {
+        return;
+      }
+
+      console.log(`🚀 Loading ${checkpoints.checkpoints.length} checkpoint pins immediately...`);
+
+      // Clear existing pins
+      checkpointGltfRefs.current.forEach((pinData) => {
+        if (pinData.model && pinData.model.parent) {
+          pinData.model.parent.remove(pinData.model);
+        }
+      });
+      checkpointGltfRefs.current.clear();
+
+      // Load pins for each checkpoint
+      for (const checkpoint of checkpoints.checkpoints) {
+        try {
+          console.log(`📍 Loading pin for: ${checkpoint.label}`);
+
+          // Try to load pin.gltf
+          const gltf = await new Promise<any>((resolve, reject) => {
+            loader.load("/pin.gltf", resolve, undefined, reject);
+          });
+
+          // Large scale for better visibility
+          gltf.scene.scale.set(10, 10, 10); // Even larger!
+          gltf.scene.rotation.x = Math.PI;
+
+          // Add to scene and store reference
+          scene.add(gltf.scene);
+          checkpointGltfRefs.current.set(checkpoint.id, {
+            model: gltf.scene,
+            checkpoint: checkpoint
+          });
+
+          console.log(`✅ Pin loaded: ${checkpoint.label} at (${checkpoint.lat}, ${checkpoint.lng})`);
+
+        } catch (error) {
+          console.log(`❌ Failed to load pin for ${checkpoint.label}, creating bright fallback`);
+
+          // Create very bright, large fallback pin
+          const fallbackGeometry = new THREE.CylinderGeometry(30, 30, 120, 8);
+          const fallbackMaterial = new THREE.MeshLambertMaterial({
+            color: 0xff0000,
+            emissive: 0x990000
+          });
+          const fallbackPin = new THREE.Mesh(fallbackGeometry, fallbackMaterial);
+
+          // Add to scene and store reference
+          scene.add(fallbackPin);
+          checkpointGltfRefs.current.set(checkpoint.id, {
+            model: fallbackPin,
+            checkpoint: checkpoint
+          });
+
+          console.log(`🔴 Bright fallback pin created: ${checkpoint.label}`);
+        }
+      }
+
+      console.log(`🎉 Total pins loaded: ${checkpointGltfRefs.current.size}`);
+    };
 
     const initMap = async () => {
       // Load Google Maps API if not loaded
@@ -302,7 +373,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
     };
 
     // Function to update GLTF position based on user location
-    const updateUserGltfPosition = (gltf: any, lat: number, lng: number, altitude: number = 0) => {
+    const updateUserGltfPosition = (gltf: any) => {
       if (gltf) {
         // Position the GLTF object at the user's location
         gltf.position.set(0, 0, 0); // Reset to origin since we use transformer
@@ -327,10 +398,23 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
           directionalLight.position.set(0.5, -1, 0.5);
           scene.add(directionalLight);
 
+
+          // Fallback marker creation function
+          const createFallbackMarker = () => {
+            const geometry = new THREE.ConeGeometry(5, 20, 8);
+            const material = new THREE.MeshLambertMaterial({ color: 0x0066ff });
+            const marker = new THREE.Mesh(geometry, material);
+            marker.rotation.x = Math.PI; // Point upward
+            userGltfRef.current = marker;
+            scene.add(marker);
+            console.log('Created fallback geometric marker');
+          };
+
           // Load GLTF loader
           import('three/examples/jsm/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
             loader = new GLTFLoader();
 
+            // Load user marker
             loader.load(
               "/labubu.glb",
               (gltf: any) => {
@@ -341,7 +425,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
                 userGltfRef.current = gltf.scene;
                 scene.add(gltf.scene);
-                updateUserGltfPosition(gltf.scene, userLocation.lat, userLocation.lng, userLocation.altitude);
+                updateUserGltfPosition(gltf.scene);
               },
               undefined,
               (error: any) => {
@@ -351,52 +435,19 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
               }
             );
 
-            // Clear existing pins
-            checkpointPinsRef.current.forEach(pin => {
-              scene.remove(pin);
-            });
-            checkpointPinsRef.current = [];
+            // Store loader and scene for external checkpoint loading
+            (webglOverlayView as any).loader = loader;
+            (webglOverlayView as any).scene = scene;
+            (webglOverlayView as any).THREE = THREE;
 
-            // Load pins for each checkpoint
-            checkpointCoordinates.forEach((checkpoint, index) => {
-              loader.load(
-                '/pin.gltf',
-                (gltf: any) => {
-                  const pin = gltf.scene.clone();
-                  pin.scale.set(10, 10, 10);
-                  pin.rotation.x = Math.PI / 2;
-                  pin.rotation.z = 0;
+            console.log('WebGL overlay ready for checkpoint pin loading');
 
-                  // Store checkpoint data on the pin object
-                  console.log(checkpoint)
-                  pin.userData = {
-                    checkpointId: checkpoint.id,
-                    lat: checkpoint.lat,
-                    lng: checkpoint.lng,
-                    label: checkpoint.label
-                  };
+            // If checkpoint data is already available, load pins immediately
+            if (checkpoints.checkpoints && checkpoints.checkpoints.length > 0) {
+              console.log('🎯 Checkpoint data available! Loading pins immediately...');
+              loadCheckpointPinsNow(loader, scene, THREE);
+            }
 
-                  checkpointPinsRef.current.push(pin);
-                  scene.add(pin);
-                  console.log(`Loaded checkpoint pin: ${checkpoint.label} at ${checkpoint.lat}, ${checkpoint.lng}`);
-                },
-                undefined,
-                (error: any) => {
-                  console.log(`Failed to load pin for checkpoint ${checkpoint.label}:`, error);
-                }
-              );
-            });
-
-            // Fallback marker creation function
-            const createFallbackMarker = () => {
-              const geometry = new THREE.ConeGeometry(5, 20, 8);
-              const material = new THREE.MeshLambertMaterial({ color: 0x0066ff });
-              const marker = new THREE.Mesh(geometry, material);
-              marker.rotation.x = Math.PI; // Point upward
-              userGltfRef.current = marker;
-              scene.add(marker);
-              console.log('Created fallback geometric marker');
-            };
           });
         });
       };
@@ -467,34 +518,38 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
             userGltfRef.current.rotation.z = -headingRadians; // Negative for correct orientation
           }
 
-          // Update checkpoint pins positions
-          checkpointPinsRef.current.forEach(pin => {
-            if (pin.userData) {
-              // Transform each checkpoint's lat/lng to world coordinates
-              const checkpointLatLng = {
-                lat: pin.userData.lat,
-                lng: pin.userData.lng,
-                altitude: 100 // Slightly elevated so pins are visible
-              };
+          // Update checkpoint pin positions
+          checkpointGltfRefs.current.forEach((pinData) => {
+            if (pinData.model && pinData.checkpoint) {
+              // Calculate relative position from user location to checkpoint
+              const checkpoint = pinData.checkpoint;
 
-              // Get the matrix for this checkpoint's position
-              const checkpointMatrix = transformer.fromLatLngAltitude(checkpointLatLng);
+              // Calculate distance and bearing for better positioning
+              const distance = getDistanceFromLatLonInKm(
+                currentLoc.lat, currentLoc.lng,
+                checkpoint.lat, checkpoint.lng
+              ) * 1000; // Convert to meters
 
-              // Apply the transformation to position the pin
-              const position = new THREE.Vector3();
-              const rotation = new THREE.Quaternion();
-              const scale = new THREE.Vector3();
+              const bearing = calculateBearing(
+                currentLoc.lat, currentLoc.lng,
+                checkpoint.lat, checkpoint.lng
+              );
 
-              new THREE.Matrix4().fromArray(checkpointMatrix).decompose(position, rotation, scale);
+              // Convert to radians and position using polar coordinates
+              const bearingRad = bearing * Math.PI / 180;
+              const x = Math.sin(bearingRad) * distance;
+              const y = Math.cos(bearingRad) * distance;
+              const z = 50; // Even higher for better visibility (120x scale)
 
-              // Transform from user location to checkpoint location
-              const userMatrix = new THREE.Matrix4().fromArray(matrix);
-              const relativeMatrix = new THREE.Matrix4().copy(new THREE.Matrix4().fromArray(checkpointMatrix)).multiply(userMatrix.invert());
+              pinData.model.position.set(x, y, z);
 
-              relativeMatrix.decompose(position, rotation, scale);
-              pin.position.copy(position);
+              // Debug occasionally for positioning verification
+              if (Math.random() < 0.005) { // 0.5% chance for logging
+                console.log(`📍 Pin "${checkpoint.label}": ${distance.toFixed(0)}m away at bearing ${bearing.toFixed(0)}°, pos=(${x.toFixed(0)}, ${y.toFixed(0)}, ${z})`);
+              }
             }
           });
+
 
           renderer.render(scene, camera);
           renderer.resetState();
@@ -502,10 +557,14 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
       };
 
       webglOverlayView.setMap(map);
+
+      // Store reference to webgl overlay for later access
+      (map as any)._webglOverlayView = webglOverlayView;
     };
 
     initMap();
-  }, [mounted]);
+  }, [mounted, mapKey]); // Re-initialize when mapKey changes
+
 
   if (!mounted) {
     return (
@@ -587,33 +646,12 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
           <button
             onClick={() => setIsNavigationMode(!isNavigationMode)}
             className={`text-xs px-2 py-1 rounded transition-colors ${isNavigationMode
-                ? 'bg-green-500 hover:bg-green-600'
-                : 'bg-gray-500 hover:bg-gray-600'
+              ? 'bg-green-500 hover:bg-green-600'
+              : 'bg-gray-500 hover:bg-gray-600'
               }`}
           >
             {isNavigationMode ? '🔄 Auto-Follow ON' : '📍 Manual Mode'}
           </button>
-        </div>
-
-        {/* Checkpoints status */}
-        <div className="bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
-          <div className="font-bold mb-1 flex items-center gap-2">
-            📍 Checkpoints
-            {checkpointsLoading && (
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-            )}
-          </div>
-          <div className="text-xs">
-            {checkpointsLoading ? (
-              <span className="text-green-200">Loading from blockchain...</span>
-            ) : (
-              <>
-                <span className="font-mono">{checkpointCoordinates.length} pins loaded</span>
-                <br />
-                <span className="text-green-200">🗺️ Rendered on map</span>
-              </>
-            )}
-          </div>
         </div>
 
         {/* Camera view tracking */}
@@ -623,6 +661,25 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
             Tilt: {cameraView.tilt.toFixed(1)}°<br />
             Heading: {cameraView.heading.toFixed(1)}°<br />
             Zoom: {cameraView.zoom.toFixed(1)}
+          </div>
+        </div>
+
+        {/* Checkpoint pins status */}
+        <div className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
+          <div className="font-bold mb-1 flex items-center gap-2">
+            📍 Checkpoint Pins
+            {checkpointGltfRefs.current.size > 0 && (
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            )}
+          </div>
+          <div className="font-mono text-xs">
+            Data Loading: {checkpoints.loading ? 'Yes' : 'No'}<br />
+            Available: {checkpoints.checkpoints?.length || 0}<br />
+            Loaded: {checkpointGltfRefs.current.size}<br />
+            Scale: 120x (Huge)<br />
+            Height: 150m<br />
+            Map Key: {mapKey}
+            {checkpoints.error && <><br /><span className="text-red-300">Error: {checkpoints.error}</span></>}
           </div>
         </div>
       </div>
