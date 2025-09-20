@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
+import { useCurrentAccount, useDisconnectWallet, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { useRouter } from 'next/navigation';
 import { useCheckpoints } from '@/hooks/useCheckpoints';
+import { Transaction } from '@mysten/sui/transactions';
 
 // Google Maps type declarations
 declare global {
@@ -71,6 +72,11 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
   const enterTimestamps = useRef<Map<string, number>>(new Map());
   const dwellTriggered = useRef<Set<string>>(new Set());
 
+  // Transaction state management
+  const [isClaimingReward, setIsClaimingReward] = useState<Set<string>>(new Set());
+  const [userProfileId, setUserProfileId] = useState<string | null>(null);
+  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
+
   const userGltfRef = useRef<any>(null);
   const checkpointGltfRefs = useRef<Map<string, any>>(new Map());
   const mapInstanceRef = useRef<any>(null);
@@ -79,15 +85,275 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
   // Wallet functionality
   const currentAccount = useCurrentAccount();
   const { mutate: disconnect } = useDisconnectWallet();
+  const suiClient = useSuiClient();
   const router = useRouter();
 
   const handleDisconnect = () => {
     disconnect();
+    setUserProfileId(null); // Clear profile ID on disconnect
     router.push('/');
   };
 
   const formatAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  // Get or create user profile
+  const ensureUserProfile = async (): Promise<string | null> => {
+    if (!currentAccount) {
+      console.error('No wallet connected');
+      return null;
+    }
+
+    // If we already have the profile ID, return it
+    if (userProfileId) {
+      return userProfileId;
+    }
+
+    try {
+      console.log('📋 Checking for existing user profile...');
+
+      // First, check if user already has a profile
+      const existingProfiles = await suiClient.getOwnedObjects({
+        owner: currentAccount.address,
+        filter: {
+          StructType: `${process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID}::user::UserProfile`
+        }
+      });
+
+      if (existingProfiles.data.length > 0) {
+        const existingProfileId = existingProfiles.data[0].data?.objectId;
+        if (existingProfileId) {
+          console.log(`📋 Found existing user profile: ${existingProfileId}`);
+          setUserProfileId(existingProfileId);
+          return existingProfileId;
+        }
+      }
+
+      console.log('🆕 No existing profile found, creating new user profile...');
+
+      // Validate environment variables
+      if (!process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID) {
+        throw new Error('NEXT_PUBLIC_SUIMMING_PACKAGE_ID is not set');
+      }
+
+      const transaction = new Transaction();
+      const target = `${process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID}::user::create_profile`;
+
+      console.log('🎯 Transaction target:', target);
+
+      transaction.moveCall({
+        target,
+        arguments: [],
+      });
+
+      console.log('📋 Transaction created, executing...');
+
+      return new Promise((resolve, reject) => {
+        signAndExecuteTransaction(
+          { transaction },
+          {
+            onSuccess: async () => {
+              console.log('✅ User profile created successfully!');
+
+              try {
+                // Wait a moment for the profile to be created and indexed
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Query for the user's profile objects
+                const profileObjects = await suiClient.getOwnedObjects({
+                  owner: currentAccount.address,
+                  filter: {
+                    StructType: `${process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID}::user::UserProfile`
+                  }
+                });
+
+                if (profileObjects.data.length > 0) {
+                  const profileObjectId = profileObjects.data[0].data?.objectId;
+                  if (profileObjectId) {
+                    setUserProfileId(profileObjectId);
+                    console.log(`📋 User profile ID: ${profileObjectId}`);
+                    resolve(profileObjectId);
+                  } else {
+                    console.error('❌ Profile object found but no objectId');
+                    reject(new Error('Profile object found but no objectId'));
+                  }
+                } else {
+                  console.error('❌ No user profile found after creation');
+                  reject(new Error('No user profile found after creation'));
+                }
+              } catch (error) {
+                console.error('❌ Error querying for user profile:', error);
+                reject(error);
+              }
+            },
+            onError: (error) => {
+              console.error('❌ Failed to create user profile:', error);
+
+              // Enhanced error debugging
+              console.error('🔍 Profile creation error details:', {
+                name: error?.name,
+                message: error?.message,
+                code: error?.code,
+                cause: error?.cause
+              });
+
+              // Check for wallet extension issues
+              if (error?.message?.includes('signTransactionBlock') ||
+                  error?.message?.includes('dApp') ||
+                  error?.message?.includes('extension')) {
+                console.error('🔌 Wallet extension compatibility issue detected');
+                console.error('💡 Troubleshooting steps:');
+                console.error('  1. Update Sui wallet extension');
+                console.error('  2. Disconnect and reconnect wallet');
+                console.error('  3. Check network settings (testnet/mainnet)');
+                console.error('  4. Try using a different wallet');
+              }
+
+              reject(error);
+            }
+          }
+        );
+      });
+    } catch (error) {
+      console.error('❌ Error in ensureUserProfile:', error);
+      return null;
+    }
+  };
+
+  // Claim letters transaction
+  const claimLetters = async (checkpointId: string) => {
+    if (!currentAccount) {
+      console.error('No wallet connected');
+      return;
+    }
+
+    // Validate environment variables
+    if (!process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID) {
+      console.error('❌ NEXT_PUBLIC_SUIMMING_PACKAGE_ID is not set');
+      return;
+    }
+
+    // Validate checkpoint ID
+    if (!checkpointId || checkpointId.length < 10) {
+      console.error('❌ Invalid checkpoint ID:', checkpointId);
+      return;
+    }
+
+    try {
+      setIsClaimingReward(prev => new Set([...prev, checkpointId]));
+      console.log(`🎁 Starting claim_letters transaction for checkpoint: ${checkpointId}`);
+
+      // Ensure user has a profile
+      const profileId = await ensureUserProfile();
+      if (!profileId) {
+        console.error('❌ Could not get or create user profile');
+        return;
+      }
+
+      console.log(`👤 Using profile ID: ${profileId}`);
+
+      const transaction = new Transaction();
+      const target = `${process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID}::checkpoint::claim_letters`;
+
+      console.log('🎯 Transaction target:', target);
+      console.log('📊 Transaction arguments:', {
+        checkpoint: checkpointId,
+        profile: profileId,
+        random: '0x8'
+      });
+
+      // Call claim_letters function with correct parameters
+      // Function signature: claim_letters(checkpoint: &mut Checkpoint, user_profile: &mut UserProfile, r: &Random, ctx: &mut TxContext)
+      transaction.moveCall({
+        target,
+        arguments: [
+          transaction.object(checkpointId), // checkpoint: &mut Checkpoint
+          transaction.object(profileId), // user_profile: &mut UserProfile
+          transaction.object('0x8'), // r: &Random (global random object)
+        ],
+      });
+
+      console.log('📋 Transaction created, executing...');
+
+      // Execute the transaction
+      signAndExecuteTransaction(
+        { transaction },
+        {
+          onSuccess: (result) => {
+            console.log('✅ claim_letters transaction successful:', result);
+            console.log('🎉 Letters claimed successfully! Check your inventory.');
+
+            // The Move contract automatically:
+            // 1. Generates random letters using sui::random
+            // 2. Calls user::append_letters() to add them to inventory
+            // 3. Calls user::record_visit() to update visit stats
+            // 4. Emits LettersClaimed event with details
+          },
+          onError: (error) => {
+            console.error('❌ claim_letters transaction failed:', error);
+
+            // Enhanced error debugging
+            console.error('🔍 Error details:', {
+              name: error?.name,
+              message: error?.message,
+              code: error?.code,
+              cause: error?.cause
+            });
+
+            // Check for wallet extension issues
+            if (error?.message?.includes('signTransactionBlock') ||
+                error?.message?.includes('dApp') ||
+                error?.message?.includes('extension')) {
+              console.error('🔌 This appears to be a wallet extension compatibility issue');
+              console.error('💡 Try the following:');
+              console.error('  1. Update your Sui wallet extension');
+              console.error('  2. Refresh the page and reconnect wallet');
+              console.error('  3. Check if you\'re on the correct network (testnet/mainnet)');
+              console.error('  4. Clear wallet extension cache/data');
+            } else {
+              console.error('Common transaction failure causes:');
+              console.error('- Checkpoint is not active');
+              console.error('- Already claimed at this checkpoint in current epoch');
+              console.error('- Invalid checkpoint or profile object ID');
+              console.error('- Network connectivity issues');
+            }
+          },
+          onSettled: () => {
+            setIsClaimingReward(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(checkpointId);
+              return newSet;
+            });
+          }
+        }
+      );
+    } catch (error) {
+      console.error('❌ Error in claimLetters:', error);
+      setIsClaimingReward(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(checkpointId);
+        return newSet;
+      });
+    }
+  };
+
+  // Checkpoint interaction handlers
+  const handleCheckpointAction = (checkpoint: any, action: string) => {
+    console.log(`🎯 ${action} action triggered for checkpoint: ${checkpoint.label} (${checkpoint.id})`);
+
+    switch (action) {
+      case 'boast':
+        console.log(`📢 Display NFT from ${checkpoint.label}`);
+        // TODO: Implement NFT display functionality
+        break;
+      case 'reward':
+        console.log(`🎁 Receiving reward from ${checkpoint.label}`);
+        claimLetters(checkpoint.id);
+        break;
+      default:
+        console.log(`❓ Unknown action: ${action}`);
+    }
   };
 
   // Geofencing event handlers
@@ -109,6 +375,13 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Clear profile ID when account changes
+  useEffect(() => {
+    if (!currentAccount) {
+      setUserProfileId(null);
+    }
+  }, [currentAccount]);
 
   // Continuous location tracking
   useEffect(() => {
@@ -743,6 +1016,60 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
           </div>
         </div>
       </div>
+
+      {/* Checkpoint Action Buttons for Inside Checkpoints */}
+      {insideCheckpoints.size > 0 && (
+        <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-2">
+          {Array.from(insideCheckpoints).map(checkpointId => {
+            const checkpoint = checkpoints.checkpoints?.find(cp => cp.id === checkpointId);
+            if (!checkpoint) return null;
+
+            return (
+              <div
+                key={checkpointId}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-lg shadow-lg border border-blue-400"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="font-bold text-lg">📍 {checkpoint.label}</h3>
+                    <p className="text-xs text-blue-200">You are inside this checkpoint</p>
+                  </div>
+                  <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleCheckpointAction(checkpoint, 'boast')}
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center gap-2 shadow-lg"
+                  >
+                    📢 Display my NFT
+                  </button>
+
+                  <button
+                    onClick={() => handleCheckpointAction(checkpoint, 'reward')}
+                    disabled={isClaimingReward.has(checkpoint.id)}
+                    className={`flex-1 ${isClaimingReward.has(checkpoint.id)
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-yellow-500 hover:bg-yellow-600'
+                    } text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center gap-2 shadow-lg`}
+                  >
+                    {isClaimingReward.has(checkpoint.id) ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Claiming...
+                      </>
+                    ) : (
+                      <>
+                        🎁 Receive Reward
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
