@@ -1,6 +1,6 @@
 'use client';
 
-import { SuiClient } from '@mysten/sui.js/client';
+import type { SuiClient } from '@mysten/sui/client';
 
 // Configuration types
 export interface WalrusClientConfig {
@@ -87,7 +87,7 @@ export class WalrusClientManager {
       // Upload using direct HTTP request similar to suiShare
       const result = await this.storeBlob(fileBuffer, epochs, force);
 
-      return this.parseStorageInfo(result.info, file.type);
+      return this.parseStorageInfo(result, file.type);
     } catch (error) {
       console.error('Error uploading file to Walrus:', error);
       throw new Error(`Walrus upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -106,13 +106,19 @@ export class WalrusClientManager {
     const response = await fetch(url, {
       method: 'PUT',
       body: data,
+      headers: {
+        'Content-Type': 'application/octet-stream',
+      }
     });
 
-    if (response.status === 200) {
-      return response.json();
-    } else {
-      throw new Error('Error storing blob on Walrus');
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Walrus upload failed: ${response.status} ${response.statusText} - ${errorText}`);
     }
+
+    const result = await response.json();
+    console.log('Walrus response:', result);
+    return result;
   }
 
   /**
@@ -122,12 +128,18 @@ export class WalrusClientManager {
     const SUI_VIEW_TX_URL = `https://suiscan.xyz/testnet/tx`;
     const SUI_VIEW_OBJECT_URL = `https://suiscan.xyz/testnet/object`;
 
+    if (!storageInfo) {
+      throw new Error('Storage info is undefined - Walrus upload may have failed');
+    }
+
+    console.log('Parsing storage info:', JSON.stringify(storageInfo, null, 2));
+
     if ('alreadyCertified' in storageInfo) {
       return {
         blobId: storageInfo.alreadyCertified.blobId,
-        certificateId: storageInfo.alreadyCertified.event.txDigest,
+        certificateId: storageInfo.alreadyCertified.event?.txDigest || storageInfo.alreadyCertified.blobId,
         endEpoch: parseInt(storageInfo.alreadyCertified.endEpoch),
-        suiRef: `${SUI_VIEW_TX_URL}/${storageInfo.alreadyCertified.event.txDigest}`
+        suiRef: `${SUI_VIEW_TX_URL}/${storageInfo.alreadyCertified.event?.txDigest || storageInfo.alreadyCertified.blobId}`
       };
     } else if ('newlyCreated' in storageInfo) {
       return {
@@ -137,7 +149,9 @@ export class WalrusClientManager {
         suiRef: `${SUI_VIEW_OBJECT_URL}/${storageInfo.newlyCreated.blobObject.id}`
       };
     } else {
-      throw new Error('Unhandled successful response from Walrus');
+      // Log the actual structure to understand what we're getting
+      console.error('Unknown response structure from Walrus:', storageInfo);
+      throw new Error(`Unhandled successful response from Walrus. Response structure: ${JSON.stringify(Object.keys(storageInfo))}`);
     }
   }
 
