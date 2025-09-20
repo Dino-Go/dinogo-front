@@ -8,6 +8,7 @@ import { ThreeJSOverlayView } from "@googlemaps/three";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
 import { toGoogleMapsLatLng, toThreeJSAnchor, interpolateLocation, isMobileDevice } from '@/utils/geoUtils';
+import { useToast } from '@/app/components/Toaster';
 import type { LocationWithAccuracy } from '@/types/location';
 
 interface WebGLMapOverlayProps {
@@ -36,6 +37,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const currentAccount = useCurrentAccount();
 	const { mutate: disconnect } = useDisconnectWallet();
 	const router = useRouter();
+	const { addNotification } = useToast();
 
 	// Location tracking
 	const {
@@ -195,22 +197,28 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		const createMap = async () => {
 			if (!mapRef.current) return;
 
-			// Use user location or default center
+			// Require user location - no fallback
 			const currentLocation = locationState.currentLocation;
-			const center = currentLocation
-				? { lat: currentLocation.lat, lng: currentLocation.lng }
-				: { lat: 35.6594945, lng: 139.6999859 };
+			if (!currentLocation) {
+				addNotification('error', 'Location required to load map. Please enable location access.');
+				return;
+			}
+
+			const center = { lat: currentLocation.lat, lng: currentLocation.lng };
 			const centerWithAltitude = { ...center, altitude: 0 };
 
-			// Map options similar to trimet.js
+			// Map options with user location
 			const mapOptions = {
-				tilt: 30,
-				zoom: currentLocation ? 16 : 18,
+				tilt: 40,
+				zoom: 20,
 				heading: 0,
 				center,
 				mapId: "15431d2b469f209e",
 				disableDefaultUI: true,
 				gestureHandling: "greedy",
+				headingInteractionEnabled: true,
+				draggable: false,
+				zoomControl: true
 			};
 
 			// Create map
@@ -245,7 +253,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 				'/labubu.glb',
 				gltf => {
 					// Apply transformations with mobile optimizations
-					const scale = isMobile ? 25 : 30; // Slightly smaller on mobile
+					const scale = isMobile ? 10 : 15; // Slightly smaller on mobile
 					gltf.scene.scale.set(scale, scale, scale);
 					gltf.scene.up = new THREE.Vector3(0, 0, 1);
 
