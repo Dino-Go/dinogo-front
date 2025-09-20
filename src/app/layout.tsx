@@ -57,6 +57,15 @@ export default function RootLayout({
 				<meta name="msapplication-TileColor" content="#3b82f6" />
 				<meta name="msapplication-tap-highlight" content="no" />
 
+				<style>{`
+					@font-face {
+						font-family: 'Anglodavek Bold';
+						src: url('/global/Anglodavek Bold.otf') format('opentype');
+						font-weight: bold;
+						font-style: normal;
+					}
+				`}</style>
+
 				<link rel="apple-touch-icon" href="/icon-192x192.png" />
 				<link rel="apple-touch-icon" sizes="152x152" href="/icon-192x192.png" />
 				<link rel="apple-touch-icon" sizes="180x180" href="/icon-192x192.png" />
