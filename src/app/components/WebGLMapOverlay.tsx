@@ -191,6 +191,28 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
     }
   };
 
+  // Recenter map to user's current location
+  const recenterToUserLocation = () => {
+    const map = mapInstanceRef.current;
+    if (!map) {
+      console.log('Map instance not available');
+      return;
+    }
+
+    console.log('🎯 Recentering map to user location:', userLocation);
+
+    // Enable navigation mode and move camera to user location
+    setIsNavigationMode(true);
+
+    // Smooth camera movement to user's current location
+    (map as any).moveCamera?.({
+      center: { lat: userLocation.lat, lng: userLocation.lng },
+      heading: userHeading, // Maintain current heading
+      tilt: 60, // Good angle for navigation
+      zoom: Math.max(18, cameraView.zoom) // Ensure good zoom level
+    });
+  };
+
   // Claim letters transaction
   const claimLetters = async (checkpointId: string) => {
     if (!currentAccount) {
@@ -951,6 +973,20 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Recenter Button - Bottom Left */}
+      <div className={`absolute ${insideCheckpoints.size > 0 ? 'bottom-32' : 'bottom-4'} left-4 z-20`}>
+        <button
+          onClick={recenterToUserLocation}
+          className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center"
+          title="Move to my location"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
       </div>
 
       {/* Checkpoint Action Buttons for Inside Checkpoints */}
