@@ -29,6 +29,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const mapRef = useRef<HTMLDivElement>(null);
 	const [mounted, setMounted] = useState(false);
 	const [isMapReady, setIsMapReady] = useState(false);
+	const [isMapInitialized, setIsMapInitialized] = useState(false);
 	const [isCameraTracking, setIsCameraTracking] = useState(false);
 	const animationFrameRef = useRef<number | null>(null);
 	const targetPositionRef = useRef<LocationWithAccuracy | null>(null);
@@ -36,6 +37,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const interpolationStartTime = useRef<number>(0);
 	const previousObjectRef = useRef<THREE.Group | null>(null);
 	const lastCameraUpdateRef = useRef<number>(0);
+	const initialLocationRef = useRef<LocationWithAccuracy | null>(null);
 
 	// Mobile device detection
 	const isMobile: boolean = isMobileDevice();
@@ -341,9 +343,19 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		}
 	}, [locationState.permission, locationState.isWatching, startWatching]);
 
-	// Initialize map when location is ready
+	// Check for initial location and trigger map initialization
 	useEffect(() => {
-		if (!mounted || (locationState.permission === 'prompt' && !locationState.currentLocation)) return;
+		if (!mounted || isMapInitialized) return;
+		if (locationState.permission !== 'granted' || !locationState.currentLocation) return;
+
+		// Capture initial location and trigger map initialization
+		initialLocationRef.current = locationState.currentLocation;
+		setIsMapInitialized(true);
+	}, [mounted, isMapInitialized, locationState.permission, locationState.currentLocation]);
+
+	// Initialize map ONCE when isMapInitialized becomes true - NEVER runs again after initial creation
+	useEffect(() => {
+		if (!isMapInitialized || !initialLocationRef.current) return;
 
 		const initMap = async () => {
 			if (!mapRef.current) return;
@@ -364,8 +376,8 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		const createMap = async () => {
 			if (!mapRef.current) return;
 
-			// Require user location - no fallback
-			const currentLocation = locationState.currentLocation;
+			// Use the captured initial location (won't change on subsequent location updates)
+			const currentLocation = initialLocationRef.current;
 			if (!currentLocation) {
 				addNotification('error', 'Location required to load map. Please enable location access.');
 				return;
@@ -494,7 +506,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		};
 
 		initMap();
-	}, [mounted, locationState.permission, locationState.currentLocation]);
+	}, [isMapInitialized, addNotification, isMobile]); // Removed locationState.currentLocation!
 
 	// Cleanup animation frames on unmount
 	useEffect(() => {
