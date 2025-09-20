@@ -131,31 +131,18 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
       }
 
       console.log('🆕 No existing profile found, creating new user profile...');
-
-      // Validate environment variables
-      if (!process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID) {
-        throw new Error('NEXT_PUBLIC_SUIMMING_PACKAGE_ID is not set');
-      }
-
       const transaction = new Transaction();
-      const target = `${process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID}::user::create_profile`;
-
-      console.log('🎯 Transaction target:', target);
 
       transaction.moveCall({
-        target,
+        target: `${process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID}::user::create_profile`,
         arguments: [],
       });
-
-      console.log('📋 Transaction created, executing...');
 
       return new Promise((resolve, reject) => {
         signAndExecuteTransaction(
           { transaction },
           {
-            onSuccess: async () => {
-              console.log('✅ User profile created successfully!');
-
+            onSuccess: async (result) => {
               try {
                 // Wait a moment for the profile to be created and indexed
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -189,27 +176,6 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
             },
             onError: (error) => {
               console.error('❌ Failed to create user profile:', error);
-
-              // Enhanced error debugging
-              console.error('🔍 Profile creation error details:', {
-                name: error?.name,
-                message: error?.message,
-                code: error?.code,
-                cause: error?.cause
-              });
-
-              // Check for wallet extension issues
-              if (error?.message?.includes('signTransactionBlock') ||
-                  error?.message?.includes('dApp') ||
-                  error?.message?.includes('extension')) {
-                console.error('🔌 Wallet extension compatibility issue detected');
-                console.error('💡 Troubleshooting steps:');
-                console.error('  1. Update Sui wallet extension');
-                console.error('  2. Disconnect and reconnect wallet');
-                console.error('  3. Check network settings (testnet/mainnet)');
-                console.error('  4. Try using a different wallet');
-              }
-
               reject(error);
             }
           }
@@ -228,18 +194,6 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
       return;
     }
 
-    // Validate environment variables
-    if (!process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID) {
-      console.error('❌ NEXT_PUBLIC_SUIMMING_PACKAGE_ID is not set');
-      return;
-    }
-
-    // Validate checkpoint ID
-    if (!checkpointId || checkpointId.length < 10) {
-      console.error('❌ Invalid checkpoint ID:', checkpointId);
-      return;
-    }
-
     try {
       setIsClaimingReward(prev => new Set([...prev, checkpointId]));
       console.log(`🎁 Starting claim_letters transaction for checkpoint: ${checkpointId}`);
@@ -251,30 +205,18 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
         return;
       }
 
-      console.log(`👤 Using profile ID: ${profileId}`);
-
       const transaction = new Transaction();
-      const target = `${process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID}::checkpoint::claim_letters`;
-
-      console.log('🎯 Transaction target:', target);
-      console.log('📊 Transaction arguments:', {
-        checkpoint: checkpointId,
-        profile: profileId,
-        random: '0x8'
-      });
 
       // Call claim_letters function with correct parameters
       // Function signature: claim_letters(checkpoint: &mut Checkpoint, user_profile: &mut UserProfile, r: &Random, ctx: &mut TxContext)
       transaction.moveCall({
-        target,
+        target: `${process.env.NEXT_PUBLIC_SUIMMING_PACKAGE_ID}::checkpoint::claim_letters`,
         arguments: [
           transaction.object(checkpointId), // checkpoint: &mut Checkpoint
           transaction.object(profileId), // user_profile: &mut UserProfile
           transaction.object('0x8'), // r: &Random (global random object)
         ],
       });
-
-      console.log('📋 Transaction created, executing...');
 
       // Execute the transaction
       signAndExecuteTransaction(
@@ -292,32 +234,10 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
           },
           onError: (error) => {
             console.error('❌ claim_letters transaction failed:', error);
-
-            // Enhanced error debugging
-            console.error('🔍 Error details:', {
-              name: error?.name,
-              message: error?.message,
-              code: error?.code,
-              cause: error?.cause
-            });
-
-            // Check for wallet extension issues
-            if (error?.message?.includes('signTransactionBlock') ||
-                error?.message?.includes('dApp') ||
-                error?.message?.includes('extension')) {
-              console.error('🔌 This appears to be a wallet extension compatibility issue');
-              console.error('💡 Try the following:');
-              console.error('  1. Update your Sui wallet extension');
-              console.error('  2. Refresh the page and reconnect wallet');
-              console.error('  3. Check if you\'re on the correct network (testnet/mainnet)');
-              console.error('  4. Clear wallet extension cache/data');
-            } else {
-              console.error('Common transaction failure causes:');
-              console.error('- Checkpoint is not active');
-              console.error('- Already claimed at this checkpoint in current epoch');
-              console.error('- Invalid checkpoint or profile object ID');
-              console.error('- Network connectivity issues');
-            }
+            console.error('Common causes:');
+            console.error('- Checkpoint is not active');
+            console.error('- Already claimed at this checkpoint in current epoch');
+            console.error('- Invalid checkpoint or profile object ID');
           },
           onSettled: () => {
             setIsClaimingReward(prev => {
