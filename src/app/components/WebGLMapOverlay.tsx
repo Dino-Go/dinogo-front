@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { ThreeJSOverlayView } from "@googlemaps/three";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
-import { toGoogleMapsLatLng, toThreeJSAnchor, interpolateLocation, isMobileDevice } from '@/utils/geoUtils';
+import { toGoogleMapsLatLng, toThreeJSAnchor, interpolateLocation, isMobileDevice, calculateDistance } from '@/utils/geoUtils';
 import { useToast } from '@/app/components/Toaster';
 import type { LocationWithAccuracy } from '@/types/location';
 
@@ -29,9 +29,16 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const targetPositionRef = useRef<LocationWithAccuracy | null>(null);
 	const currentInterpolatedPosition = useRef<LocationWithAccuracy | null>(null);
 	const interpolationStartTime = useRef<number>(0);
+
+	// User interaction tracking
+	const isUserInteracting = useRef<boolean>(false);
+	const lastMapCenterUpdate = useRef<number>(0);
+	const mapCenterUpdateDebounce = useRef<NodeJS.Timeout | null>(null);
+
 	// Mobile device detection
 	const isMobile: boolean = isMobileDevice();
 	const interpolationDuration = isMobile ? 3000 : 2000; // Mobile-optimized duration
+	const mapCenterThreshold = 50; // Only center map if user is more than 50m away from center
 
 	// Wallet functionality
 	const currentAccount = useCurrentAccount();
@@ -42,13 +49,9 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	// Location tracking
 	const {
 		state: locationState,
-		startWatching,
-		stopWatching,
 		requestLocation,
-		getCurrentPosition,
 		isFollowingEnabled,
-		toggleFollowing,
-		getMovementUpdate
+		toggleFollowing
 	} = useLocationTracking({
 		enableHighAccuracy: true,
 		timeout: 10000,
@@ -81,22 +84,41 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 			lng: interpolated.lng,
 			altitude: interpolated.altitude
 		};
-	}, []);
+	}, [interpolationDuration]);
 
-	// Update 3D object position smoothly
+	// Update 3D object position smoothly with conflict prevention
 	const update3DObjectPosition = useCallback((newPosition: LocationWithAccuracy) => {
 		if (!overlay || !labubuObject || !isMapReady) return;
-
-		// Set target position for interpolation
-		targetPositionRef.current = newPosition;
-		interpolationStartTime.current = Date.now();
 
 		// If this is the first position, jump immediately
 		if (!currentInterpolatedPosition.current) {
 			currentInterpolatedPosition.current = newPosition;
+			targetPositionRef.current = newPosition;
 			const anchor = toThreeJSAnchor(newPosition);
 			(overlay as any).anchor = anchor;
 			return;
+		}
+
+		// Check if the new position is significantly different from current target
+		const distanceFromTarget = targetPositionRef.current
+			? calculateDistance(targetPositionRef.current, newPosition)
+			: Infinity;
+
+		// Only start new animation if position change is significant (>2 meters)
+		if (distanceFromTarget < 2) return;
+
+		// Set new target position
+		targetPositionRef.current = newPosition;
+
+		// If no animation is running, start from current interpolated position
+		if (!animationFrameRef.current) {
+			interpolationStartTime.current = Date.now();
+		} else {
+			// Animation is running - smoothly transition to new target
+			// Keep the current interpolation start time to avoid jarring changes
+			const elapsed = Date.now() - interpolationStartTime.current;
+			const remainingDuration = Math.max(interpolationDuration - elapsed, 500); // At least 500ms
+			interpolationStartTime.current = Date.now() - (interpolationDuration - remainingDuration);
 		}
 
 		// Start animation loop for smooth movement
@@ -123,26 +145,52 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 			}
 		};
 
-		// Cancel any existing animation
+		// Cancel any existing animation before starting new one
 		if (animationFrameRef.current) {
 			cancelAnimationFrame(animationFrameRef.current);
 		}
 
 		// Start new animation
 		animationFrameRef.current = requestAnimationFrame(animate);
-	}, [isMapReady, interpolatePosition]);
+	}, [isMapReady, interpolatePosition, interpolationDuration]);
 
-	// Update map center smoothly without affecting 3D object
+	// Update map center intelligently to prevent flickering
 	const updateMapCenter = useCallback((newPosition: LocationWithAccuracy) => {
-		if (!map) return;
+		if (!map || isUserInteracting.current) return;
 
-		const latLng = toGoogleMapsLatLng(newPosition);
+		const now = Date.now();
 
-		// Smooth pan to new location
-		if (map && 'panTo' in map) {
-			(map as any).panTo(latLng);
+		// Throttle map center updates (minimum 3 seconds between updates)
+		if (now - lastMapCenterUpdate.current < 3000) return;
+
+		// Check if user has moved significantly from current map center
+		const currentCenter = (map as any).getCenter();
+		if (currentCenter) {
+			const currentCenterLocation = {
+				lat: currentCenter.lat(),
+				lng: currentCenter.lng()
+			};
+
+			const distanceFromCenter = calculateDistance(currentCenterLocation, newPosition);
+
+			// Only update map center if user is far from current center
+			if (distanceFromCenter < mapCenterThreshold) return;
 		}
-	}, []);
+
+		// Clear any existing debounce
+		if (mapCenterUpdateDebounce.current) {
+			clearTimeout(mapCenterUpdateDebounce.current);
+		}
+
+		// Debounce map center updates to prevent rapid changes
+		mapCenterUpdateDebounce.current = setTimeout(() => {
+			if (!isUserInteracting.current && map) {
+				const latLng = toGoogleMapsLatLng(newPosition);
+				(map as any).panTo(latLng);
+				lastMapCenterUpdate.current = Date.now();
+			}
+		}, 1000); // 1 second debounce
+	}, [mapCenterThreshold]);
 
 	useEffect(() => {
 		setMounted(true);
@@ -223,6 +271,28 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
 			// Create map
 			map = new google.maps.Map(mapRef.current, mapOptions);
+
+			// Add user interaction detection to prevent map center conflicts
+			const handleUserInteractionStart = () => {
+				isUserInteracting.current = true;
+			};
+
+			const handleUserInteractionEnd = () => {
+				// Delay setting to false to ensure panTo doesn't conflict
+				setTimeout(() => {
+					isUserInteracting.current = false;
+				}, 500);
+			};
+
+			// Listen for map interactions
+			map.addListener('dragstart', handleUserInteractionStart);
+			map.addListener('dragend', handleUserInteractionEnd);
+			map.addListener('zoom_changed', handleUserInteractionStart);
+			// Add touch listeners for mobile
+			if (isMobile) {
+				mapRef.current?.addEventListener('touchstart', handleUserInteractionStart);
+				mapRef.current?.addEventListener('touchend', handleUserInteractionEnd);
+			}
 
 			// Create overlay similar to trimet.js
 			overlay = new ThreeJSOverlayView({
@@ -326,11 +396,14 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		initMap();
 	}, [mounted, locationState.permission, locationState.currentLocation]);
 
-	// Cleanup animation frames on unmount
+	// Cleanup animation frames and debounce timeouts on unmount
 	useEffect(() => {
 		return () => {
 			if (animationFrameRef.current) {
 				cancelAnimationFrame(animationFrameRef.current);
+			}
+			if (mapCenterUpdateDebounce.current) {
+				clearTimeout(mapCenterUpdateDebounce.current);
 			}
 		};
 	}, []);
