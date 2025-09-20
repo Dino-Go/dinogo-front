@@ -144,15 +144,6 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		}
 	}, []);
 
-	// Move camera function to replace locationState.currentLocation dependency
-	const moveCamera = useCallback((newPosition: LocationWithAccuracy) => {
-		if (!map || !isMapReady) return;
-
-		// Update both the 3D object position and map center
-		update3DObjectPosition(newPosition);
-		updateMapCenter(newPosition);
-	}, [map, isMapReady, update3DObjectPosition, updateMapCenter]);
-
 	useEffect(() => {
 		setMounted(true);
 	}, []);
@@ -160,10 +151,11 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	// Handle location updates for 3D object movement
 	useEffect(() => {
 		if (locationState.currentLocation && isFollowingEnabled && isMapReady) {
-			console.log('Moving camera to new position:', locationState.currentLocation);
-			moveCamera(locationState.currentLocation);
+			console.log('Updating 3D object position:', locationState.currentLocation);
+			update3DObjectPosition(locationState.currentLocation);
+			updateMapCenter(locationState.currentLocation);
 		}
-	}, [locationState.currentLocation, isFollowingEnabled, isMapReady, moveCamera]);
+	}, [locationState.currentLocation, isFollowingEnabled, isMapReady, update3DObjectPosition, updateMapCenter]);
 
 	// Request initial location when component mounts
 	useEffect(() => {
@@ -303,10 +295,6 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 					// Set initial position if we have current location
 					if (currentLocation) {
 						currentInterpolatedPosition.current = currentLocation;
-						// Use moveCamera for initial positioning if following is enabled
-						if (isFollowingEnabled) {
-							setTimeout(() => moveCamera(currentLocation), 100);
-						}
 					}
 
 					console.log('3D object loaded and ready for movement tracking');
@@ -330,22 +318,13 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 					(overlay as any).scene.add(labubuObject);
 					setIsMapReady(true);
 
-					// Set initial position for fallback object if we have current location
-					if (currentLocation) {
-						currentInterpolatedPosition.current = currentLocation;
-						// Use moveCamera for initial positioning if following is enabled
-						if (isFollowingEnabled) {
-							setTimeout(() => moveCamera(currentLocation), 100);
-						}
-					}
-
 					console.log('Fallback 3D object created and ready');
 				}
 			);
 		};
 
 		initMap();
-	}, [mounted, locationState.permission]);
+	}, [mounted, locationState.permission, locationState.currentLocation]);
 
 	// Cleanup animation frames on unmount
 	useEffect(() => {
