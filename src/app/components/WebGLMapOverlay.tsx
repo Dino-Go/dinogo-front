@@ -129,7 +129,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
 			// Load pin.gltf similar to trimet.js bus loading
 			loader.load(
-				'/pin.gltf',
+				'/labubu.glb',
 				gltf => {
 					// Apply transformations similar to trimet.js
 					gltf.scene.scale.set(30, 30, 30);
@@ -138,8 +138,8 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 					// Apply rotations to all children like trimet.js does
 					if (gltf.scene.children.length > 0) {
 						gltf.scene.children.forEach(child => {
-							child.rotation.x = Math.PI;
-							child.position.z = 5;
+							child.rotation.x = Math.PI / 2;
+							child.position.z = 1;
 						});
 					}
 

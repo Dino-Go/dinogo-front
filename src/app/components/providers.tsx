@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getFullnodeUrl } from '@mysten/sui.js/client';
 import { PropsWithChildren, useMemo, useState } from 'react';
 import RegisterEnokiWallets from '@/app/components/RegisterEnokiWallets';
+import { ToastProvider } from '@/app/components/Toaster';
 
 const { networkConfig } = createNetworkConfig({
 	testnet: { url: getFullnodeUrl('testnet') },
@@ -20,7 +21,9 @@ export function Providers({ children }: PropsWithChildren) {
             <SuiClientProvider networks={networks} network="testnet">
                 <RegisterEnokiWallets />
                 <WalletProvider autoConnect>
-                    {children}
+                    <ToastProvider>
+                        {children}
+                    </ToastProvider>
                 </WalletProvider>
             </SuiClientProvider>
         </QueryClientProvider>
