@@ -94,6 +94,10 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
     router.push('/');
   };
 
+  const handleMyPage = () => {
+    router.push('/mypage');
+  };
+
   const formatAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
@@ -142,7 +146,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
         signAndExecuteTransaction(
           { transaction },
           {
-            onSuccess: async (result) => {
+            onSuccess: async () => {
               try {
                 // Wait a moment for the profile to be created and indexed
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -873,6 +877,18 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
             <span className="w-2 h-2 bg-emerald-300 rounded-full animate-pulse"></span>
             <span className="font-mono">{formatAddress(currentAccount.address)}</span>
           </div>
+
+          {/* My Page button */}
+          <button
+            onClick={handleMyPage}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg transition-colors duration-200 flex items-center justify-center gap-1"
+            title="View your profile and inventory"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            My Page
+          </button>
 
           {/* Disconnect button */}
           <button
