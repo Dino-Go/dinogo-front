@@ -13,6 +13,7 @@
     "@mysten/dapp-kit": "^0.18.0",
     "@mysten/enoki": "^0.12.0",
     "@mysten/seal": "^0.6.0",
+    "@mysten/sui": "^1.38.0",
     "@mysten/sui.js": "^0.54.1",
     "@mysten/wallet-adapter-base": "^0.9.0",
     "@mysten/wallet-adapter-react": "^11.0.0",

@@ -20,6 +20,9 @@ importers:
       '@mysten/seal':
         specifier: ^0.6.0
         version: 0.6.0(typescript@5.9.2)
+      '@mysten/sui':
+        specifier: ^1.38.0
+        version: 1.38.0(typescript@5.9.2)
       '@mysten/sui.js':
         specifier: ^0.54.1
         version: 0.54.1(typescript@5.9.2)
