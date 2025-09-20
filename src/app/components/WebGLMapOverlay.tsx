@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { ThreeJSOverlayView } from "@googlemaps/three";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
-import { toGoogleMapsLatLng, toThreeJSAnchor, interpolateLocation, isMobileDevice, calculateDistance } from '@/utils/geoUtils';
+import { toGoogleMapsLatLng, interpolateLocation, isMobileDevice, calculateDistance } from '@/utils/geoUtils';
 import { useToast } from '@/app/components/Toaster';
 import type { LocationWithAccuracy } from '@/types/location';
 
@@ -21,14 +21,20 @@ let map: google.maps.Map | null = null;
 let overlay: ThreeJSOverlayView;
 let labubuObject: THREE.Group | null = null;
 
+// Camera tracking variables (trimet.js style)
+const cameraFocusOn = { enabled: false }; // Camera tracking state
+const mapCenter = { lat: 0, lng: 0 }; // Current map center for incremental movement
+
 export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const mapRef = useRef<HTMLDivElement>(null);
 	const [mounted, setMounted] = useState(false);
 	const [isMapReady, setIsMapReady] = useState(false);
+	const [isCameraTracking, setIsCameraTracking] = useState(false);
 	const animationFrameRef = useRef<number | null>(null);
 	const targetPositionRef = useRef<LocationWithAccuracy | null>(null);
 	const currentInterpolatedPosition = useRef<LocationWithAccuracy | null>(null);
 	const interpolationStartTime = useRef<number>(0);
+	const previousObjectRef = useRef<THREE.Group | null>(null);
 
 	// Mobile device detection
 	const isMobile: boolean = isMobileDevice();
@@ -74,6 +80,63 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		}
 	}, [locationState.currentLocation, addNotification]);
 
+	// Toggle camera tracking
+	const toggleCameraTracking = useCallback(() => {
+		const newTracking = !isCameraTracking;
+		setIsCameraTracking(newTracking);
+		cameraFocusOn.enabled = newTracking;
+
+		if (newTracking && locationState.currentLocation) {
+			// Initialize map center for tracking
+			mapCenter.lat = locationState.currentLocation.lat;
+			mapCenter.lng = locationState.currentLocation.lng;
+		}
+
+		addNotification('info', newTracking ? 'Camera tracking enabled' : 'Camera tracking disabled');
+	}, [isCameraTracking, locationState.currentLocation, addNotification]);
+
+	// Utility functions from trimet.js
+	const simpleRange = useCallback((loc: number, pos: number, num: number): boolean => {
+		return loc >= pos - num && loc <= pos + num;
+	}, []);
+
+	// Camera movement function (trimet.js style)
+	const moveCamera = useCallback((objectPosition: THREE.Vector3) => {
+		if (!cameraFocusOn.enabled || !map || !overlay) return;
+
+		// Convert current map center to vector for comparison
+		let vec = (overlay as any).latLngAltitudeToVector3(mapCenter);
+
+		// Follow object left/right (x-axis)
+		if (vec.x < objectPosition.x) {
+			while (!simpleRange(vec.x, objectPosition.x, 10)) {
+				mapCenter.lng += 0.00000001; // Move right
+				vec = (overlay as any).latLngAltitudeToVector3(mapCenter);
+			}
+		} else {
+			while (!simpleRange(vec.x, objectPosition.x, 10)) {
+				mapCenter.lng -= 0.00000001; // Move left
+				vec = (overlay as any).latLngAltitudeToVector3(mapCenter);
+			}
+		}
+
+		// Follow object up/down (y-axis)
+		if (vec.y < objectPosition.y) {
+			while (!simpleRange(vec.y, objectPosition.y, 10)) {
+				mapCenter.lat += 0.00000001; // Move up
+				vec = (overlay as any).latLngAltitudeToVector3(mapCenter);
+			}
+		} else {
+			while (!simpleRange(vec.y, objectPosition.y, 10)) {
+				mapCenter.lat -= 0.00000001; // Move down
+				vec = (overlay as any).latLngAltitudeToVector3(mapCenter);
+			}
+		}
+
+		// Update Google Maps camera
+		(map as any).moveCamera({ center: mapCenter });
+	}, [simpleRange]);
+
 	// Smooth position interpolation for 3D object
 	const interpolatePosition = useCallback((startPosition: LocationWithAccuracy, endPosition: LocationWithAccuracy, elapsed: number): LocationWithAccuracy => {
 		const progress = Math.min(elapsed / interpolationDuration, 1);
@@ -90,7 +153,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		};
 	}, [interpolationDuration]);
 
-	// Update 3D object position smoothly with conflict prevention
+	// Update 3D object position using trimet.js object cloning pattern
 	const update3DObjectPosition = useCallback((newPosition: LocationWithAccuracy) => {
 		if (!overlay || !labubuObject || !isMapReady) return;
 
@@ -98,8 +161,30 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		if (!currentInterpolatedPosition.current) {
 			currentInterpolatedPosition.current = newPosition;
 			targetPositionRef.current = newPosition;
-			// const anchor = toThreeJSAnchor(newPosition);
-			// (overlay as any).anchor = anchor;
+
+			// Convert location to 3D position
+			const objectPosition = (overlay as any).latLngAltitudeToVector3({
+				lat: newPosition.lat,
+				lng: newPosition.lng,
+				altitude: newPosition.altitude || 0
+			});
+
+			// Create and position the object (trimet.js style)
+			if (labubuObject) {
+				const objectClone = labubuObject.clone();
+				objectClone.position.copy(objectPosition);
+
+				// Add to scene and store reference
+				(overlay as any).scene.add(objectClone);
+				previousObjectRef.current = objectClone;
+			}
+
+			// Initialize map center for camera tracking
+			if (cameraFocusOn.enabled) {
+				mapCenter.lat = newPosition.lat;
+				mapCenter.lng = newPosition.lng;
+			}
+
 			return;
 		}
 
@@ -125,16 +210,44 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 			interpolationStartTime.current = Date.now() - (interpolationDuration - remainingDuration);
 		}
 
-		// Start animation loop for smooth movement
+		// Start animation loop for smooth movement (trimet.js style)
 		const animate = () => {
 			if (!targetPositionRef.current || !currentInterpolatedPosition.current) return;
 
 			const elapsed = Date.now() - interpolationStartTime.current;
 			const interpolatedPos = interpolatePosition(currentInterpolatedPosition.current, targetPositionRef.current, elapsed);
 
-			// Update overlay anchor
-			// const anchor = toThreeJSAnchor(interpolatedPos);
-			// (overlay as any).anchor = anchor;
+			// Convert interpolated position to 3D coordinates
+			const objectPosition = (overlay as any).latLngAltitudeToVector3({
+				lat: interpolatedPos.lat,
+				lng: interpolatedPos.lng,
+				altitude: interpolatedPos.altitude || 0
+			});
+
+			// Calculate forward direction for lookAt (similar to trimet.js)
+			const nextPos = {
+				lat: interpolatedPos.lat + 0.0001,
+				lng: interpolatedPos.lng + 0.0001,
+				altitude: interpolatedPos.altitude || 0
+			};
+			const forwardPosition = (overlay as any).latLngAltitudeToVector3(nextPos);
+
+			// Remove previous object and create new one (trimet.js pattern)
+			if (previousObjectRef.current) {
+				(overlay as any).scene.remove(previousObjectRef.current);
+			}
+
+			// Create new object and position it
+			if (labubuObject) {
+				const objectClone = labubuObject.clone();
+				objectClone.position.copy(objectPosition);
+				objectClone.lookAt(forwardPosition); // Orient object in movement direction
+				(overlay as any).scene.add(objectClone);
+				previousObjectRef.current = objectClone;
+			}
+
+			// Update camera tracking (trimet.js style)
+			moveCamera(objectPosition);
 
 			// Update current position
 			currentInterpolatedPosition.current = interpolatedPos;
@@ -156,7 +269,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
 		// Start new animation
 		animationFrameRef.current = requestAnimationFrame(animate);
-	}, [isMapReady, interpolatePosition, interpolationDuration]);
+	}, [isMapReady, interpolatePosition, interpolationDuration, moveCamera]);
 
 
 	useEffect(() => {
@@ -249,13 +362,17 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 			// Create map
 			map = new google.maps.Map(mapRef.current, mapOptions);
 
-			// Create overlay similar to trimet.js
+			// Create overlay similar to trimet.js (without anchor dependency)
 			overlay = new ThreeJSOverlayView({
 				map,
-				anchor: centerWithAltitude,
+				anchor: centerWithAltitude, // Initial anchor, but we'll position objects directly
 				scene: new THREE.Scene(),
 				THREE,
 			});
+
+			// Initialize map center for camera tracking
+			mapCenter.lat = currentLocation.lat;
+			mapCenter.lng = currentLocation.lng;
 
 			// Add ambient light with mobile optimization
 			const ambientLight = new THREE.AmbientLight(0xFFFFFF);
@@ -308,11 +425,10 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 						});
 					}
 
-					// Store reference to the 3D object for position updates
+					// Store reference to the 3D object for cloning (trimet.js style)
 					labubuObject = gltf.scene;
 
-					// Add to overlay scene
-					(overlay as any).scene.add(gltf.scene);
+					// DON'T add to scene immediately - we'll clone and position objects manually
 
 					// Mark map as ready for 3D object updates
 					setIsMapReady(true);
@@ -322,7 +438,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 						currentInterpolatedPosition.current = currentLocation;
 					}
 
-					console.log('3D object loaded and ready for movement tracking');
+					console.log('3D object template loaded and ready for trimet.js-style cloning');
 				},
 				(progress) => {
 					// Loading progress
@@ -336,14 +452,14 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 					const cube = new THREE.Mesh(geometry, material);
 					cube.position.set(0, 25, 0);
 
-					// Store reference to fallback object
+					// Store reference to fallback object (trimet.js style)
 					labubuObject = new THREE.Group();
 					labubuObject.add(cube);
 
-					(overlay as any).scene.add(labubuObject);
+					// DON'T add to scene immediately - we'll clone and position objects manually
 					setIsMapReady(true);
 
-					console.log('Fallback 3D object created and ready');
+					console.log('Fallback 3D object template created and ready for trimet.js-style cloning');
 				}
 			);
 		};
@@ -408,6 +524,24 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 						<circle cx="12" cy="12" r="2" fill="currentColor" />
 					</svg>
 				</button>
+
+				{/* Camera tracking toggle button */}
+				<button
+					onClick={toggleCameraTracking}
+					className={`p-3 rounded-full shadow-lg transition-colors ${
+						isCameraTracking
+							? 'bg-orange-600 hover:bg-orange-700 text-white'
+							: 'bg-gray-600 hover:bg-gray-700 text-white'
+					}`}
+					title={isCameraTracking ? 'Camera tracking enabled - click to disable' : 'Camera tracking disabled - click to enable'}
+				>
+					<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+					</svg>
+					{isCameraTracking && (
+						<div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-300 rounded-full animate-pulse"></div>
+					)}
+				</button>
 			</div>
 
 			{/* Wallet status and disconnect button - Top Right */}
@@ -463,6 +597,14 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 					<div className="bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg flex items-center gap-1">
 						<div className="w-2 h-2 bg-purple-300 rounded-full animate-ping"></div>
 						Tracking movement
+					</div>
+				)}
+
+				{/* Camera tracking indicator */}
+				{isCameraTracking && (
+					<div className="bg-orange-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg flex items-center gap-1">
+						<div className="w-2 h-2 bg-orange-300 rounded-full animate-pulse"></div>
+						📹 Camera following
 					</div>
 				)}
 			</div>
