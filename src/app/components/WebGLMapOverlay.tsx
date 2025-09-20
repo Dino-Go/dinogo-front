@@ -619,37 +619,6 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
       {/* Map status indicator and tracking info - Top Left */}
       <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
-        {isMapReady && (
-          <div className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">
-            🗺️ Map Ready
-          </div>
-        )}
-
-        {/* User location tracking */}
-        <div className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
-          <div className="font-bold mb-1 flex items-center gap-2">
-            📍 User Location
-            {isLocationTracking && (
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-            )}
-            {/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && (
-              <span className="text-yellow-200">📱</span>
-            )}
-          </div>
-          <div className="font-mono text-xs">
-            Lat: {userLocation.lat.toFixed(6)}<br />
-            Lng: {userLocation.lng.toFixed(6)}<br />
-            Alt: {userLocation.altitude.toFixed(1)}m<br />
-            Heading: {userHeading.toFixed(1)}°
-            {/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && (
-              <><br /><span className="text-yellow-200">Mobile: Alt Fixed to 5m</span></>
-            )}
-          </div>
-          {isLocationTracking && (
-            <div className="text-xs text-green-200 mt-1">🔄 Live tracking</div>
-          )}
-        </div>
-
         {/* Navigation mode toggle */}
         <div className="bg-orange-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
           <div className="font-bold mb-1 flex items-center gap-2">
@@ -667,35 +636,6 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
           >
             {isNavigationMode ? '🔄 Auto-Follow ON' : '📍 Manual Mode'}
           </button>
-        </div>
-
-        {/* Camera view tracking */}
-        <div className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
-          <div className="font-bold mb-1">🎥 Camera View</div>
-          <div className="font-mono text-xs">
-            Tilt: {cameraView.tilt.toFixed(1)}°<br />
-            Heading: {cameraView.heading.toFixed(1)}°<br />
-            Zoom: {cameraView.zoom.toFixed(1)}
-          </div>
-        </div>
-
-        {/* Checkpoint pins status */}
-        <div className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
-          <div className="font-bold mb-1 flex items-center gap-2">
-            📍 Checkpoint Pins
-            {checkpointGltfRefs.current.size > 0 && (
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-            )}
-          </div>
-          <div className="font-mono text-xs">
-            Data Loading: {checkpoints.loading ? 'Yes' : 'No'}<br />
-            Available: {checkpoints.checkpoints?.length || 0}<br />
-            Loaded: {checkpointGltfRefs.current.size}<br />
-            Scale: 120x (Huge)<br />
-            Height: 150m<br />
-            Map Key: {mapKey}
-            {checkpoints.error && <><br /><span className="text-red-300">Error: {checkpoints.error}</span></>}
-          </div>
         </div>
       </div>
     </div>
