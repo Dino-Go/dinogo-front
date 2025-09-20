@@ -30,15 +30,9 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const currentInterpolatedPosition = useRef<LocationWithAccuracy | null>(null);
 	const interpolationStartTime = useRef<number>(0);
 
-	// User interaction tracking
-	const isUserInteracting = useRef<boolean>(false);
-	const lastMapCenterUpdate = useRef<number>(0);
-	const mapCenterUpdateDebounce = useRef<NodeJS.Timeout | null>(null);
-
 	// Mobile device detection
 	const isMobile: boolean = isMobileDevice();
 	const interpolationDuration = isMobile ? 3000 : 2000; // Mobile-optimized duration
-	const mapCenterThreshold = 50; // Only center map if user is more than 50m away from center
 
 	// Wallet functionality
 	const currentAccount = useCurrentAccount();
@@ -46,12 +40,11 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const router = useRouter();
 	const { addNotification } = useToast();
 
-	// Location tracking
+	// Location tracking - always active
 	const {
 		state: locationState,
-		requestLocation,
-		isFollowingEnabled,
-		toggleFollowing
+		startWatching,
+		requestLocation
 	} = useLocationTracking({
 		enableHighAccuracy: true,
 		timeout: 10000,
@@ -69,6 +62,17 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 	const formatAddress = (address: string) => {
 		return `${address.slice(0, 6)}...${address.slice(-4)}`;
 	};
+
+	// Pan map to user's current location
+	const goToMyLocation = useCallback(() => {
+		if (locationState.currentLocation && map) {
+			const latLng = toGoogleMapsLatLng(locationState.currentLocation);
+			(map as any).panTo(latLng);
+			addNotification('info', 'Centered on your location');
+		} else if (!locationState.currentLocation) {
+			addNotification('info', 'Location not available');
+		}
+	}, [locationState.currentLocation, addNotification]);
 
 	// Smooth position interpolation for 3D object
 	const interpolatePosition = useCallback((startPosition: LocationWithAccuracy, endPosition: LocationWithAccuracy, elapsed: number): LocationWithAccuracy => {
@@ -154,73 +158,46 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		animationFrameRef.current = requestAnimationFrame(animate);
 	}, [isMapReady, interpolatePosition, interpolationDuration]);
 
-	// Update map center intelligently to prevent flickering
-	const updateMapCenter = useCallback((newPosition: LocationWithAccuracy) => {
-		if (!map || isUserInteracting.current) return;
-
-		const now = Date.now();
-
-		// Throttle map center updates (minimum 3 seconds between updates)
-		if (now - lastMapCenterUpdate.current < 3000) return;
-
-		// Check if user has moved significantly from current map center
-		const currentCenter = (map as any).getCenter();
-		if (currentCenter) {
-			const currentCenterLocation = {
-				lat: currentCenter.lat(),
-				lng: currentCenter.lng()
-			};
-
-			const distanceFromCenter = calculateDistance(currentCenterLocation, newPosition);
-
-			// Only update map center if user is far from current center
-			if (distanceFromCenter < mapCenterThreshold) return;
-		}
-
-		// Clear any existing debounce
-		if (mapCenterUpdateDebounce.current) {
-			clearTimeout(mapCenterUpdateDebounce.current);
-		}
-
-		// Debounce map center updates to prevent rapid changes
-		mapCenterUpdateDebounce.current = setTimeout(() => {
-			if (!isUserInteracting.current && map) {
-				const latLng = toGoogleMapsLatLng(newPosition);
-				(map as any).panTo(latLng);
-				lastMapCenterUpdate.current = Date.now();
-			}
-		}, 1000); // 1 second debounce
-	}, [mapCenterThreshold]);
 
 	useEffect(() => {
 		setMounted(true);
 	}, []);
 
-	// Handle location updates for 3D object movement
+	// Handle location updates for 3D object movement - always active
 	useEffect(() => {
-		if (locationState.currentLocation && isFollowingEnabled && isMapReady) {
+		if (locationState.currentLocation && isMapReady) {
 			console.log('Updating 3D object position:', locationState.currentLocation);
 			update3DObjectPosition(locationState.currentLocation);
-			updateMapCenter(locationState.currentLocation);
 		}
-	}, [locationState.currentLocation, isFollowingEnabled, isMapReady, update3DObjectPosition, updateMapCenter]);
+	}, [locationState.currentLocation, isMapReady, update3DObjectPosition]);
 
-	// Request initial location when component mounts
+	// Request initial location and start tracking when component mounts
 	useEffect(() => {
 		if (!mounted || locationState.permission === 'denied') return;
 
-		const getInitialLocation = async () => {
+		const initializeLocation = async () => {
 			try {
 				if (locationState.permission === 'prompt') {
 					await requestLocation();
 				}
+				// Always start watching location if we have permission
+				if (locationState.permission === 'granted' && !locationState.isWatching) {
+					startWatching();
+				}
 			} catch (error) {
-				console.log('Initial location request failed:', error);
+				console.log('Initial location setup failed:', error);
 			}
 		};
 
-		getInitialLocation();
-	}, [mounted, locationState.permission, requestLocation]);
+		initializeLocation();
+	}, [mounted, locationState.permission, locationState.isWatching, requestLocation, startWatching]);
+
+	// Ensure location tracking is always active when permission is granted
+	useEffect(() => {
+		if (locationState.permission === 'granted' && !locationState.isWatching) {
+			startWatching();
+		}
+	}, [locationState.permission, locationState.isWatching, startWatching]);
 
 	// Initialize map when location is ready
 	useEffect(() => {
@@ -271,28 +248,6 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
 			// Create map
 			map = new google.maps.Map(mapRef.current, mapOptions);
-
-			// Add user interaction detection to prevent map center conflicts
-			const handleUserInteractionStart = () => {
-				isUserInteracting.current = true;
-			};
-
-			const handleUserInteractionEnd = () => {
-				// Delay setting to false to ensure panTo doesn't conflict
-				setTimeout(() => {
-					isUserInteracting.current = false;
-				}, 500);
-			};
-
-			// Listen for map interactions
-			map.addListener('dragstart', handleUserInteractionStart);
-			map.addListener('dragend', handleUserInteractionEnd);
-			map.addListener('zoom_changed', handleUserInteractionStart);
-			// Add touch listeners for mobile
-			if (isMobile) {
-				mapRef.current?.addEventListener('touchstart', handleUserInteractionStart);
-				mapRef.current?.addEventListener('touchend', handleUserInteractionEnd);
-			}
 
 			// Create overlay similar to trimet.js
 			overlay = new ThreeJSOverlayView({
@@ -396,14 +351,11 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		initMap();
 	}, [mounted, locationState.permission, locationState.currentLocation]);
 
-	// Cleanup animation frames and debounce timeouts on unmount
+	// Cleanup animation frames on unmount
 	useEffect(() => {
 		return () => {
 			if (animationFrameRef.current) {
 				cancelAnimationFrame(animationFrameRef.current);
-			}
-			if (mapCenterUpdateDebounce.current) {
-				clearTimeout(mapCenterUpdateDebounce.current);
 			}
 		};
 	}, []);
@@ -432,18 +384,10 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 				style={{ minHeight: '400px' }}
 			/>
 
-			{/* Follow mode toggle button - Bottom Left */}
+			{/* Location tracking status and controls - Bottom Left */}
 			<div className="absolute bottom-4 left-4 flex flex-col gap-2 z-10">
-				{/* Location tracking toggle */}
-				<button
-					onClick={toggleFollowing}
-					className={`p-3 rounded-full shadow-lg transition-all duration-200 ${
-						isFollowingEnabled
-							? 'bg-green-600 hover:bg-green-700 text-white'
-							: 'bg-gray-600 hover:bg-gray-700 text-white'
-					}`}
-					title={isFollowingEnabled ? 'Following your location' : 'Click to follow your location'}
-				>
+				{/* Location tracking status - always enabled */}
+				<div className="p-3 rounded-full shadow-lg bg-green-600 text-white" title="Location tracking active">
 					<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -451,20 +395,19 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 					{locationState.isWatching && (
 						<div className="absolute -top-1 -right-1 w-3 h-3 bg-green-300 rounded-full animate-pulse"></div>
 					)}
-				</button>
+				</div>
 
-				{/* Location request button for denied permission */}
-				{locationState.permission === 'denied' && (
-					<button
-						onClick={requestLocation}
-						className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-full shadow-lg transition-colors"
-						title="Request location permission"
-					>
-						<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.062 16.5c-.77.833.192 2.5 1.732 2.5z" />
-						</svg>
-					</button>
-				)}
+				{/* Go to my location button - always visible */}
+				<button
+					onClick={goToMyLocation}
+					className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg transition-colors"
+					title="Center map on your location"
+				>
+					<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2v4m0 12v4m8-10h-4M6 12H2" />
+						<circle cx="12" cy="12" r="2" fill="currentColor" />
+					</svg>
+				</button>
 			</div>
 
 			{/* Wallet status and disconnect button - Top Right */}
@@ -493,10 +436,8 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 			{/* Location status indicator - Top Left */}
 			<div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
 				{locationState.currentLocation && (
-					<div className={`text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg ${
-						isFollowingEnabled ? 'bg-green-600' : 'bg-blue-600'
-					}`}>
-						📍 {isFollowingEnabled ? 'Following location' : 'Location found'}
+					<div className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">
+						📍 Tracking location
 						{locationState.currentLocation.accuracy && (
 							<span className="ml-1 opacity-75">
 								(±{Math.round(locationState.currentLocation.accuracy)}m)
@@ -518,7 +459,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 				)}
 
 				{/* Movement indicator */}
-				{isFollowingEnabled && locationState.isWatching && (
+				{locationState.isWatching && (
 					<div className="bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg flex items-center gap-1">
 						<div className="w-2 h-2 bg-purple-300 rounded-full animate-ping"></div>
 						Tracking movement
