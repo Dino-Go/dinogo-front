@@ -98,8 +98,8 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 		if (!currentInterpolatedPosition.current) {
 			currentInterpolatedPosition.current = newPosition;
 			targetPositionRef.current = newPosition;
-			const anchor = toThreeJSAnchor(newPosition);
-			(overlay as any).anchor = anchor;
+			// const anchor = toThreeJSAnchor(newPosition);
+			// (overlay as any).anchor = anchor;
 			return;
 		}
 
@@ -133,8 +133,8 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 			const interpolatedPos = interpolatePosition(currentInterpolatedPosition.current, targetPositionRef.current, elapsed);
 
 			// Update overlay anchor
-			const anchor = toThreeJSAnchor(interpolatedPos);
-			(overlay as any).anchor = anchor;
+			// const anchor = toThreeJSAnchor(interpolatedPos);
+			// (overlay as any).anchor = anchor;
 
 			// Update current position
 			currentInterpolatedPosition.current = interpolatedPos;
