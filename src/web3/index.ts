@@ -7,9 +7,14 @@
  * - Seal: Decentralized secrets management
  */
 
-import { SuiClient } from '@mysten/sui.js/client';
+import { SuiClient } from '@mysten/sui/client';
 
-// Core clients
+// Import classes for use in functions
+import { KioskClient } from './kioskClient';
+import { WalrusClientManager } from './walrusClient';
+import { SealClientManager } from './sealClient';
+
+// Core clients - re-export everything
 export {
   KioskClient,
   useKioskClient,

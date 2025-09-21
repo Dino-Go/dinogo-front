@@ -110,7 +110,7 @@ export function hasSignificantMovement(
  * @param location Location object
  * @returns Google Maps compatible object
  */
-export function toGoogleMapsLatLng(location: Location): google.maps.LatLngLiteral {
+export function toGoogleMapsLatLng(location: Location): { lat: number; lng: number } {
   return {
     lat: location.lat,
     lng: location.lng

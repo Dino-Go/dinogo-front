@@ -958,33 +958,6 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
             {isNavigationMode ? '🔄 Auto-Follow ON' : '📍 Manual Mode'}
           </button>
         </div>
-
-        {/* Geofencing status */}
-        <div className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
-          <div className="font-bold mb-1 flex items-center gap-2">
-            🛡️ Geofencing
-            {isLocationTracking && (
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-            )}
-            {insideCheckpoints.size > 0 && (
-              <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
-            )}
-          </div>
-          <div className="font-mono text-xs">
-            Location: {isLocationTracking ? '🟢 Tracking' : '🔴 Inactive'}<br />
-            Radius: {GEOFENCE_RADIUS_METERS}m<br />
-            Dwell Time: {DWELL_THRESHOLD_MS / 1000}s<br />
-            Inside: {insideCheckpoints.size} checkpoint{insideCheckpoints.size !== 1 ? 's' : ''}<br />
-            {insideCheckpoints.size > 0 && (
-              <div className="text-yellow-200 mt-1">
-                Active: {Array.from(insideCheckpoints).map(id => {
-                  const checkpoint = checkpoints.checkpoints?.find(cp => cp.id === id);
-                  return checkpoint?.label || id;
-                }).join(', ')}
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Recenter Button - Bottom Left */}

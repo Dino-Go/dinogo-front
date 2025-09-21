@@ -1,7 +1,7 @@
 'use client';
 
 import { SealClient, EncryptedObject, NoAccessError } from '@mysten/seal';
-import { SuiClient } from '@mysten/sui.js/client';
+import { SuiClient } from '@mysten/sui/client';
 
 // Configuration types
 export interface SealClientConfig {

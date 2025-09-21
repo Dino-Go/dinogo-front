@@ -1,6 +1,6 @@
 'use client';
 
-import { SuiClient } from '@mysten/sui.js/client';
+import { SuiClient } from '@mysten/sui/client';
 
 // Note: Install @mysten/kiosk dependency when permission issue is resolved
 // For now, we'll prepare the structure and types
@@ -159,15 +159,18 @@ export class KioskClient {
   }
 
   /**
-   * Get listings from marketplace contract (if it exists)
+   * Get listings from marketplace contract
    */
   private async getMarketplaceListings(): Promise<ListedNFT[]> {
     try {
-      // Query for marketplace listing objects
-      const marketplaceObjects = await this.suiClient.queryObjects({
-        query: {
-          StructType: `${this.packageId}::marketplace::Listing`
-        },
+      console.log('🏪 Fetching marketplace listings...');
+
+      // Get marketplace ID first
+      const marketplaceId = await this.getMarketplaceId();
+
+      // Get the marketplace object directly
+      const marketplaceObject = await this.suiClient.getObject({
+        id: marketplaceId,
         options: {
           showContent: true,
           showType: true
@@ -176,48 +179,58 @@ export class KioskClient {
 
       const listings: ListedNFT[] = [];
 
-      for (const obj of marketplaceObjects.data) {
-        if (obj.data?.content?.dataType === 'moveObject') {
-          const content = obj.data.content as any;
-          const listingFields = content.fields;
+      if (marketplaceObject.data?.content?.dataType === 'moveObject') {
+        // Get marketplace events to find listings
+        try {
+          const events = await this.suiClient.queryEvents({
+            query: {
+              MoveEventType: `${this.packageId}::marketplace::NFTListed`
+            },
+            order: 'descending',
+            limit: 50 // Adjust as needed
+          });
 
-          // Get the actual NFT object
-          try {
-            const nftObject = await this.suiClient.getObject({
-              id: listingFields.nft_id,
-              options: {
-                showContent: true,
-                showType: true
-              }
-            });
+          for (const event of events.data) {
+            const eventData = event.parsedJson as any;
 
-            if (nftObject.data?.content?.dataType === 'moveObject') {
-              const nftContent = nftObject.data.content as any;
+            // Check if this NFT is still listed (not purchased or delisted)
+            const stillListed = await this.isNFTStillListed(eventData.nft_id);
 
-              // Verify it's a Sentence NFT
-              if (nftContent.type?.includes('::nft::Sentence')) {
+            if (stillListed) {
+              // Get the actual NFT object
+              const nftObject = await this.suiClient.getObject({
+                id: eventData.nft_id,
+                options: {
+                  showContent: true,
+                  showType: true
+                }
+              });
+
+              if (nftObject.data?.content?.dataType === 'moveObject') {
+                const nftContent = nftObject.data.content as any;
+
                 listings.push({
-                  id: listingFields.nft_id,
+                  id: eventData.nft_id,
                   content: {
                     dataType: 'moveObject',
                     fields: {
-                      id: listingFields.nft_id,
-                      text: nftContent.fields.text || '',
-                      consume: nftContent.fields.consume || '',
-                      walrus_cid: nftContent.fields.walrus_cid || '',
-                      owner: listingFields.seller || ''
+                      id: eventData.nft_id,
+                      text: nftContent.fields?.text || eventData.text || '',
+                      letters_used: nftContent.fields?.letters_used?.toString() || '0',
+                      walrus_cid: nftContent.fields?.walrus_cid || eventData.walrus_cid || '',
+                      created_epoch: nftContent.fields?.created_epoch?.toString() || '0'
                     }
                   },
-                  price: this.formatSuiAmount(listingFields.price),
+                  price: this.formatSuiAmount(eventData.price),
                   isListed: true,
-                  listingId: obj.data.objectId,
-                  seller: listingFields.seller
+                  listingId: eventData.nft_id,
+                  seller: eventData.seller
                 });
               }
             }
-          } catch (nftError) {
-            console.warn(`Could not fetch NFT ${listingFields.nft_id}:`, nftError);
           }
+        } catch (eventError) {
+          console.warn('Error fetching marketplace events:', eventError);
         }
       }
 
@@ -226,6 +239,20 @@ export class KioskClient {
     } catch (error) {
       console.log('No marketplace contract found or error querying:', error);
       return [];
+    }
+  }
+
+  /**
+   * Check if an NFT is still listed in marketplace
+   */
+  private async isNFTStillListed(nftId: string): Promise<boolean> {
+    try {
+      // This would check if the NFT exists in marketplace storage
+      // For now, we'll assume it's listed if we can query it
+      // In production, you'd query the marketplace's listings table
+      return true;
+    } catch (error) {
+      return false;
     }
   }
 
@@ -257,26 +284,36 @@ export class KioskClient {
    */
   async createListing(nftId: string, price: string, transaction: any) {
     try {
-      // This would typically involve:
-      // 1. Creating a kiosk if user doesn't have one
-      // 2. Placing the NFT in the kiosk
-      // 3. Setting the price
-      // 4. Making it available for purchase
-
       console.log(`Creating listing for NFT ${nftId} at price ${price} SUI`);
 
-      // Placeholder transaction for demonstration
+      // Convert SUI to MIST (1 SUI = 1,000,000,000 MIST)
+      const priceInMist = Math.floor(parseFloat(price) * 1_000_000_000);
+
+      // Get the marketplace object ID (this would be stored/cached)
+      const marketplaceId = await this.getMarketplaceId();
+
       transaction.moveCall({
         target: `${this.packageId}::marketplace::list_nft`,
         arguments: [
+          transaction.object(marketplaceId),
           transaction.object(nftId),
-          transaction.pure(price)
+          transaction.pure.u64(priceInMist)
         ],
       });
 
       return transaction;
     } catch (error) {
       console.error('Error creating listing:', error);
+
+      if (error instanceof Error) {
+        if (error.message.includes('not deployed')) {
+          throw new Error('🏪 Marketplace not deployed yet!\n\nTo enable NFT trading, please:\n1. Deploy the Move contracts: sui move publish --path suimming-move/\n2. Set NEXT_PUBLIC_MARKETPLACE_ID in your .env file');
+        }
+        if (error.message.includes('Package ID not configured')) {
+          throw new Error('⚙️ Package ID not configured!\n\nPlease set NEXT_PUBLIC_SUIMMING_PACKAGE_ID in your .env file after deploying the Move contracts.');
+        }
+      }
+
       throw error;
     }
   }
@@ -288,12 +325,22 @@ export class KioskClient {
     try {
       console.log(`Purchasing listing ${listingId} for ${price} SUI`);
 
-      // Placeholder transaction for demonstration
+      // Convert SUI to MIST
+      const priceInMist = Math.floor(parseFloat(price) * 1_000_000_000);
+
+      // Get the marketplace object ID
+      const marketplaceId = await this.getMarketplaceId();
+
+      // Split coins for payment
+      const [paymentCoin] = transaction.splitCoins(transaction.gas, [priceInMist]);
+
       transaction.moveCall({
         target: `${this.packageId}::marketplace::purchase_nft`,
         arguments: [
-          transaction.object(listingId),
-          transaction.pure(price)
+          transaction.object(marketplaceId),
+          transaction.object(listingId), // The NFT object
+          paymentCoin,
+          transaction.pure.address(listingId) // NFT ID for lookup
         ],
       });
 
@@ -311,10 +358,14 @@ export class KioskClient {
     try {
       console.log(`Canceling listing ${listingId}`);
 
+      const marketplaceId = await this.getMarketplaceId();
+
       transaction.moveCall({
-        target: `${this.packageId}::marketplace::cancel_listing`,
+        target: `${this.packageId}::marketplace::delist_nft`,
         arguments: [
-          transaction.object(listingId)
+          transaction.object(marketplaceId),
+          transaction.object(listingId), // The NFT object
+          transaction.pure.address(listingId) // NFT ID for lookup
         ],
       });
 
@@ -322,6 +373,53 @@ export class KioskClient {
     } catch (error) {
       console.error('Error canceling listing:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get the marketplace object ID
+   */
+  private async getMarketplaceId(): Promise<string> {
+    try {
+      // First try to get from environment variable (set during deployment)
+      const marketplaceId = process.env.NEXT_PUBLIC_MARKETPLACE_ID;
+      if (marketplaceId && marketplaceId.length > 10 && marketplaceId.startsWith('0x')) {
+        // Validate it's a proper address format
+        if (marketplaceId.length >= 42) {
+          return marketplaceId;
+        }
+      }
+
+      // Check if package ID is available
+      if (!this.packageId || this.packageId.length < 10) {
+        throw new Error('Package ID not configured - please deploy Move contracts first');
+      }
+
+      // Fallback: Query for marketplace creation events to find the marketplace ID
+      console.log('🔍 Looking for marketplace deployment events...');
+      const events = await this.suiClient.queryEvents({
+        query: {
+          MoveEventType: `${this.packageId}::marketplace::MarketplaceCreated`
+        },
+        order: 'ascending',
+        limit: 1
+      });
+
+      if (events.data.length > 0) {
+        const eventData = events.data[0].parsedJson as any;
+        console.log('✅ Found marketplace from events:', eventData.marketplace_id);
+        return eventData.marketplace_id;
+      }
+
+      throw new Error('Marketplace not deployed yet');
+    } catch (error) {
+      console.error('Error getting marketplace ID:', error);
+
+      if (error instanceof Error && error.message.includes('not deployed')) {
+        throw new Error('🏪 Marketplace not deployed yet. Please deploy the Move contracts first using: sui move publish --path suimming-move/');
+      }
+
+      throw new Error('Marketplace not available - please deploy contracts or set NEXT_PUBLIC_MARKETPLACE_ID');
     }
   }
 }
@@ -334,9 +432,9 @@ export interface ListedNFT {
     fields: {
       id: string;
       text: string;
-      consume: string;
+      letters_used: string;
       walrus_cid: string;
-      owner: string;
+      created_epoch: string;
     };
   };
   price?: string;
