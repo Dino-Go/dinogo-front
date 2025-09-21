@@ -874,10 +874,10 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
 
   if (!mounted) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-100">
+      <div className="w-full h-full flex items-center justify-center bg-[#F5F5DC]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading map...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#20B2AA] mx-auto"></div>
+          <p className="mt-2 text-[#8B4513] font-bold">Loading map...</p>
         </div>
       </div>
     );
@@ -895,15 +895,15 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
       {currentAccount && (
         <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
           {/* Wallet status */}
-          <div className="bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg flex items-center justify-center gap-2">
-            <span className="w-2 h-2 bg-emerald-300 rounded-full animate-pulse"></span>
+          <div className="bg-[#20B2AA] text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg flex items-center justify-center gap-2 border-2 border-[#8B4513]">
+            <span className="w-2 h-2 bg-[#F5F5DC] rounded-full animate-pulse"></span>
             <span className="font-mono">{formatAddress(currentAccount.address)}</span>
           </div>
 
           {/* Market button */}
           <button
             onClick={() => router.push('/market')}
-            className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg transition-colors duration-200 flex items-center justify-center gap-1"
+            className="bg-[#DEB887] hover:bg-[#8B4513] text-[#8B4513] hover:text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg transition-colors duration-200 flex items-center justify-center gap-1 border-2 border-[#8B4513]"
             title="Browse and trade NFTs"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -915,7 +915,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
           {/* My Page button */}
           <button
             onClick={handleMyPage}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg transition-colors duration-200 flex items-center justify-center gap-1"
+            className="bg-[#DEB887] hover:bg-[#8B4513] text-[#8B4513] hover:text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg transition-colors duration-200 flex items-center justify-center gap-1 border-2 border-[#8B4513]"
             title="View your profile and inventory"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -927,7 +927,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
           {/* Disconnect button */}
           <button
             onClick={handleDisconnect}
-            className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg transition-colors duration-200 flex items-center justify-center gap-1"
+            className="bg-[#8B4513] hover:bg-[#20B2AA] text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg transition-colors duration-200 flex items-center justify-center gap-1 border-2 border-[#8B4513]"
             title="Disconnect wallet and return to home"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -941,18 +941,18 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
       {/* Map status indicator and tracking info - Top Left */}
       <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
         {/* Navigation mode toggle */}
-        <div className="bg-orange-600 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg">
+        <div className="bg-[#DEB887] text-[#8B4513] px-3 py-2 rounded-lg text-xs font-medium shadow-lg border-2 border-[#8B4513]">
           <div className="font-bold mb-1 flex items-center gap-2">
             🧭 Navigation Mode
             {isNavigationMode && (
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+              <span className="w-2 h-2 bg-[#20B2AA] rounded-full animate-pulse"></span>
             )}
           </div>
           <button
             onClick={() => setIsNavigationMode(!isNavigationMode)}
             className={`text-xs px-2 py-1 rounded transition-colors ${isNavigationMode
-              ? 'bg-green-500 hover:bg-green-600'
-              : 'bg-gray-500 hover:bg-gray-600'
+              ? 'bg-[#20B2AA] hover:bg-[#8B4513] text-white'
+              : 'bg-[#8B4513] hover:bg-[#20B2AA] text-white'
               }`}
           >
             {isNavigationMode ? '🔄 Auto-Follow ON' : '📍 Manual Mode'}
@@ -964,7 +964,7 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
       <div className={`absolute ${insideCheckpoints.size > 0 ? 'bottom-32' : 'bottom-4'} left-4 z-20`}>
         <button
           onClick={recenterToUserLocation}
-          className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center"
+          className="bg-[#20B2AA] hover:bg-[#8B4513] text-white p-3 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center border-2 border-[#8B4513]"
           title="Move to my location"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -984,20 +984,20 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
             return (
               <div
                 key={checkpointId}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-lg shadow-lg border border-blue-400"
+                className="bg-[#DEB887] text-[#8B4513] p-4 rounded-lg shadow-lg border-4 border-[#8B4513]"
               >
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="font-bold text-lg">📍 {checkpoint.label}</h3>
-                    <p className="text-xs text-blue-200">You are inside this checkpoint</p>
+                    <p className="text-xs text-[#8B4513] opacity-75">You are inside this checkpoint</p>
                   </div>
-                  <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
+                  <div className="w-3 h-3 bg-[#20B2AA] rounded-full animate-pulse"></div>
                 </div>
 
                 <div className="flex gap-3">
                   <button
                     onClick={() => handleCheckpointAction(checkpoint, 'boast')}
-                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center gap-2 shadow-lg"
+                    className="flex-1 bg-[#8B4513] hover:bg-[#20B2AA] text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center gap-2 shadow-lg border-2 border-[#8B4513]"
                   >
                     📢 Display my NFT
                   </button>
@@ -1006,9 +1006,9 @@ export default function WebGLMapOverlay({ className }: WebGLMapOverlayProps) {
                     onClick={() => handleCheckpointAction(checkpoint, 'reward')}
                     disabled={isClaimingReward.has(checkpoint.id)}
                     className={`flex-1 ${isClaimingReward.has(checkpoint.id)
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-yellow-500 hover:bg-yellow-600'
-                    } text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center gap-2 shadow-lg`}
+                      ? 'bg-[#8B4513] opacity-50 cursor-not-allowed'
+                      : 'bg-[#20B2AA] hover:bg-[#8B4513]'
+                    } text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center gap-2 shadow-lg border-2 border-[#8B4513]`}
                   >
                     {isClaimingReward.has(checkpoint.id) ? (
                       <>

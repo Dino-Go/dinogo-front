@@ -278,12 +278,12 @@ export default function MarketPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-[#F5F5DC] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-          <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          <div className="bg-[#DEB887] py-8 px-4 shadow-lg border-4 border-[#8B4513] sm:rounded-lg sm:px-10">
             <div className="flex flex-col items-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
-              <p className="text-gray-600">Loading marketplace...</p>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#20B2AA] mb-4"></div>
+              <p className="text-[#8B4513] font-bold">Loading marketplace...</p>
             </div>
           </div>
         </div>
@@ -296,16 +296,16 @@ export default function MarketPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-[#F5F5DC] py-8 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         {/* Enhanced Header */}
-        <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-2xl p-6 mb-8 shadow-lg">
+        <div className="bg-[#DEB887] rounded-2xl p-6 mb-8 shadow-lg border-4 border-[#8B4513]">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
               <Link
                 href="/map"
-                className="inline-flex items-center px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg border border-gray-200"
+                className="inline-flex items-center px-4 py-2 bg-[#F5F5DC] hover:bg-[#FFFACD] text-[#8B4513] rounded-xl font-bold transition-all duration-200 shadow-md hover:shadow-lg border-2 border-[#8B4513]"
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -313,21 +313,21 @@ export default function MarketPage() {
                 Back to Map
               </Link>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">🏪 Global NFT Marketplace</h1>
-                <p className="text-gray-600 mt-1">Trade Sentence NFTs with collectors worldwide</p>
+                <h1 className="text-3xl font-bold text-[#8B4513]">🏪 Global NFT Marketplace</h1>
+                <p className="text-[#8B4513] mt-1">Trade Sentence NFTs with collectors worldwide</p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
               <div className="text-right">
-                <div className="text-2xl font-bold text-gray-800">
+                <div className="text-2xl font-bold text-[#8B4513]">
                   {marketNFTs.length + myNFTs.length}
                 </div>
-                <div className="text-sm text-gray-600">Total NFTs</div>
+                <div className="text-sm text-[#8B4513]">Total NFTs</div>
               </div>
               <button
                 onClick={() => setActiveTab('my-collection')}
-                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="inline-flex items-center px-6 py-3 bg-[#20B2AA] hover:bg-[#1E9E9E] text-white rounded-xl font-bold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 border-2 border-[#8B4513]"
               >
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -339,25 +339,25 @@ export default function MarketPage() {
 
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-xl p-4 shadow-md">
-              <div className="text-2xl font-bold text-blue-600">{marketNFTs.length}</div>
-              <div className="text-sm text-gray-600">Available for Sale</div>
+            <div className="bg-[#F5F5DC] rounded-xl p-4 shadow-md border-2 border-[#8B4513]">
+              <div className="text-2xl font-bold text-[#20B2AA]">{marketNFTs.length}</div>
+              <div className="text-sm text-[#8B4513] font-bold">Available for Sale</div>
             </div>
-            <div className="bg-white rounded-xl p-4 shadow-md">
-              <div className="text-2xl font-bold text-green-600">{myNFTs.length}</div>
-              <div className="text-sm text-gray-600">Your Collection</div>
+            <div className="bg-[#F5F5DC] rounded-xl p-4 shadow-md border-2 border-[#8B4513]">
+              <div className="text-2xl font-bold text-[#20B2AA]">{myNFTs.length}</div>
+              <div className="text-sm text-[#8B4513] font-bold">Your Collection</div>
             </div>
-            <div className="bg-white rounded-xl p-4 shadow-md">
-              <div className="text-2xl font-bold text-purple-600">
+            <div className="bg-[#F5F5DC] rounded-xl p-4 shadow-md border-2 border-[#8B4513]">
+              <div className="text-2xl font-bold text-[#20B2AA]">
                 {marketNFTs.reduce((sum, nft) => sum + (parseFloat(nft.price || '0')), 0).toFixed(2)}
               </div>
-              <div className="text-sm text-gray-600">Total Value (SUI)</div>
+              <div className="text-sm text-[#8B4513] font-bold">Total Value (SUI)</div>
             </div>
-            <div className="bg-white rounded-xl p-4 shadow-md">
-              <div className="text-2xl font-bold text-orange-600">
+            <div className="bg-[#F5F5DC] rounded-xl p-4 shadow-md border-2 border-[#8B4513]">
+              <div className="text-2xl font-bold text-[#20B2AA]">
                 {marketNFTs.length > 0 ? (marketNFTs.reduce((sum, nft) => sum + (parseFloat(nft.price || '0')), 0) / marketNFTs.length).toFixed(2) : '0.00'}
               </div>
-              <div className="text-sm text-gray-600">Avg Price (SUI)</div>
+              <div className="text-sm text-[#8B4513] font-bold">Avg Price (SUI)</div>
             </div>
           </div>
         </div>

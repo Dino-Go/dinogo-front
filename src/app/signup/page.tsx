@@ -136,13 +136,13 @@ export default function SignupPage() {
 
     if (!currentAccount) {
         return (
-            <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+            <div className="min-h-screen bg-[#F5F5DC] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
                 <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4">Wallet Required</h2>
-                    <p className="text-gray-600 mb-6">Please connect your wallet first to create a profile.</p>
+                    <h2 className="text-2xl font-bold text-[#8B4513] mb-4">Wallet Required</h2>
+                    <p className="text-[#8B4513] mb-6">Please connect your wallet first to create a profile.</p>
                     <button
                         onClick={() => router.push('/')}
-                        className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        className="inline-flex justify-center py-2 px-4 border-2 border-[#8B4513] shadow-lg text-sm font-bold rounded-md text-white bg-[#20B2AA] hover:bg-[#1E9E9E] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#20B2AA]"
                     >
                         Go to Home
                     </button>
@@ -152,17 +152,17 @@ export default function SignupPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="min-h-screen bg-[#F5F5DC] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
             <div className="sm:mx-auto sm:w-full sm:max-w-md">
                 <div className="text-center mb-6">
-                    <h1 className="text-3xl font-bold text-gray-900">Welcome to Suimming!</h1>
-                    <p className="text-gray-600 mt-2">Create your player profile to start collecting letters</p>
+                    <h1 className="text-3xl font-bold text-[#8B4513]">Welcome to Suimming!</h1>
+                    <p className="text-[#8B4513] mt-2">Create your player profile to start collecting letters</p>
                 </div>
 
-                <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+                <div className="bg-[#DEB887] py-8 px-4 shadow-lg border-4 border-[#8B4513] sm:rounded-lg sm:px-10">
                     <form onSubmit={handleCreateProfile} className="space-y-6">
                         <div>
-                            <label htmlFor="displayName" className="block text-sm font-medium text-gray-700">
+                            <label htmlFor="displayName" className="block text-sm font-bold text-[#8B4513]">
                                 Display Name (Optional)
                             </label>
                             <div className="mt-1">
@@ -173,14 +173,14 @@ export default function SignupPage() {
                                     value={formData.displayName}
                                     onChange={handleInputChange}
                                     placeholder="Enter your display name"
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                    className="appearance-none block w-full px-3 py-2 border-2 border-[#8B4513] rounded-md placeholder-[#8B4513] bg-[#F5F5DC] text-[#8B4513] focus:outline-none focus:ring-2 focus:ring-[#20B2AA] focus:border-[#20B2AA]"
                                     maxLength={50}
                                 />
                             </div>
                         </div>
 
                         <div>
-                            <label htmlFor="bio" className="block text-sm font-medium text-gray-700">
+                            <label htmlFor="bio" className="block text-sm font-bold text-[#8B4513]">
                                 Bio (Optional)
                             </label>
                             <div className="mt-1">
@@ -191,7 +191,7 @@ export default function SignupPage() {
                                     value={formData.bio}
                                     onChange={handleInputChange}
                                     placeholder="Tell us about yourself..."
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                    className="appearance-none block w-full px-3 py-2 border-2 border-[#8B4513] rounded-md placeholder-[#8B4513] bg-[#F5F5DC] text-[#8B4513] focus:outline-none focus:ring-2 focus:ring-[#20B2AA] focus:border-[#20B2AA]"
                                     maxLength={200}
                                 />
                             </div>
@@ -201,7 +201,7 @@ export default function SignupPage() {
                             <button
                                 type="submit"
                                 disabled={isLoading}
-                                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full flex justify-center py-2 px-4 border-2 border-[#8B4513] rounded-md shadow-lg text-sm font-bold text-white bg-[#20B2AA] hover:bg-[#1E9E9E] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#20B2AA] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isLoading ? 'Creating Profile...' : 'Create Profile'}
                             </button>
@@ -209,7 +209,7 @@ export default function SignupPage() {
                             <button
                                 type="button"
                                 onClick={handleSkip}
-                                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-ne focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                className="w-full flex justify-center py-2 px-4 border-2 border-[#8B4513] rounded-md shadow-lg text-sm font-bold text-[#8B4513] bg-[#F5F5DC] hover:bg-[#FFFACD] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#20B2AA]"
                             >
                                 Return to Home Page
                             </button>
@@ -219,14 +219,14 @@ export default function SignupPage() {
                     <div className="mt-6">
                         <div className="relative">
                             <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-gray-300" />
+                                <div className="w-full border-t-2 border-[#8B4513]" />
                             </div>
                             <div className="relative flex justify-center text-sm">
-                                <span className="px-2 bg-white text-gray-500">Connected Wallet</span>
+                                <span className="px-2 bg-[#DEB887] text-[#8B4513] font-bold">Connected Wallet</span>
                             </div>
                         </div>
                         <div className="mt-3 text-center">
-                            <p className="text-sm text-gray-600 break-all">
+                            <p className="text-sm text-[#8B4513] break-all font-mono">
                                 {currentAccount.address}
                             </p>
                         </div>
