@@ -491,7 +491,7 @@ export default function MarketPage() {
                   <div className="max-w-lg mx-auto">
                     <h3 className="text-xl font-semibold text-gray-700 mb-3">Marketplace Not Deployed</h3>
                     <p className="text-gray-500 text-base mb-4">
-                      The marketplace contracts haven't been deployed yet. To enable NFT trading, you need to deploy the Move contracts first.
+                      The marketplace contracts haven&apos;t been deployed yet. To enable NFT trading, you need to deploy the Move contracts first.
                     </p>
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
                       <p className="text-yellow-800 text-sm mb-3">

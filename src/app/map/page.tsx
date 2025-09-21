@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation';
 import WebGLMapOverlay from "@/app/components/WebGLMapOverlay";
 import { hasUserProfile } from "@/utils/userProfile";
 
+// Force dynamic rendering for this page since it uses browser APIs
+export const dynamic = 'force-dynamic';
+
 export default function MapPage() {
     const currentAccount = useCurrentAccount();
     const suiClient = useSuiClient();
